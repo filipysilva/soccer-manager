@@ -79,11 +79,14 @@
     const potential = age < 24 ? U.clamp(rating + Math.floor(rng() * 12), rating, 95) : rating;
     const traits = TRAITS_BY_POS[pos][Math.floor(rng() * TRAITS_BY_POS[pos].length)];
     const side = (pos === "LD" || pos === "PD") ? "D" : (pos === "LE" || pos === "PE") ? "E" : (rng() < 0.75 ? "D" : "E");
+    // pé preferido realista (~25% canhotos no futebol), ambidestro raríssimo
+    const r = rng();
+    const foot = r < 0.012 ? "both" : (side === "E" ? (r < 0.62 ? "left" : "right") : (r < 0.87 ? "right" : "left"));
     generatedId++;
     return normalizePlayer({
       id: "gen_" + generatedId,
       name: window.TF.names.randomName(nation, rng),
-      position: pos, age, nation, side, rating, potential,
+      position: pos, age, nation, side, foot, rating, potential,
       value: valueFor(rating, age),
       traits: traits.slice(),
       skills: skillsForPosition(pos, rating, rng),
@@ -120,6 +123,7 @@
       age: raw.age || 25,
       nation: raw.nation || "BRA",
       side: raw.side === "E" || raw.side === "D" || raw.side === "C" ? raw.side : (raw.foot === "left" ? "E" : "D"),
+      foot: raw.foot === "left" ? "E" : raw.foot === "both" ? "A" : "D",
       rating,
       potential: U.clamp(Math.round(raw.potential || rating), rating, 99),
       value: raw.value != null ? raw.value : valueFor(rating, raw.age || 25),

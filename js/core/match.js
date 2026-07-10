@@ -175,11 +175,29 @@
     function strengths(s) {
       const st = teamStrength(s.team.lineup, s.team.tactics, grassBad);
       if (s.key === "h" && opts.homeAdv !== false) { st.mid *= 1.14; st.att *= 1.1; st.def *= 1.07; }
+      // capitão em campo lidera o time (experiência e qualidade contam)
+      const capId = s.team.captainId;
+      if (capId) {
+        const capSlot = s.team.lineup.find(sl => sl.player && sl.player.id === capId);
+        if (capSlot) {
+          const cap = capSlot.player;
+          const boost = 1.015 + (cap.age >= 30 ? 0.012 : 0) + (cap.rating >= 84 ? 0.008 : 0);
+          st.def *= boost; st.mid *= boost; st.att *= boost;
+        }
+      }
       // marcação adversária pesada reduz criação
       const oppMark = s.other.team.tactics.marking;
       if (oppMark === "pesada") st.att *= 0.94;
       else if (oppMark === "muito pesada") st.att *= 0.87;
       return st;
+    }
+
+    /* Cobrador designado (se estiver em campo); senão, o melhor disponível. */
+    function designated(team, key) {
+      const id = team.setPieces && team.setPieces[key];
+      if (!id) return null;
+      const slot = team.lineup.find(sl => sl.player && sl.player.id === id && sl.slotPos !== "GOL");
+      return slot || null;
     }
 
     function attemptGoal(att, min) {
@@ -198,8 +216,16 @@
       if (rng() > create * 1.12) {
         if (rng() < 0.4) {
           state.stats[att.key].corners++;
-          log(min, "corner", "Escanteio para " + att.team.club.name + ".", att);
-          if (rng() < 0.16 + stA.aerialAtt * 0.004) return attemptCornerGoal(att, min);
+          const side = rng() < 0.5 ? "esquerda" : "direita";
+          const taker = designated(att.team, side === "esquerda" ? "cornerLeft" : "cornerRight");
+          log(min, "corner", "Escanteio pela " + side + " para " + att.team.club.name +
+            (taker ? " — " + taker.player.name + " na cobrança" : "") + ".", att);
+          let takerBonus = 0;
+          if (taker) {
+            takerBonus = (effSkill(taker.player, "pass", taker.slotPos) - 60) * 0.0012 +
+              (hasTrait(taker.player, "Cruzamento") ? 0.05 : 0);
+          }
+          if (rng() < 0.16 + stA.aerialAtt * 0.004 + takerBonus) return attemptCornerGoal(att, min, taker);
         } else {
           log(min, "chance", (headed ? "Cabeçada" : "Finalização") + " de " + shooter.player.name + " para fora!", att);
         }
@@ -215,7 +241,7 @@
       }
     }
 
-    function attemptCornerGoal(att, min) {
+    function attemptCornerGoal(att, min, taker) {
       const def = att.other;
       const shooter = pickShooter(att.team.lineup, rng, true);
       if (!shooter || !shooter.player) return;
@@ -223,15 +249,19 @@
       const gkSkill = gkSlot && gkSlot.player ? effSkill(gkSlot.player, "gk", "GOL") : 25;
       const finish = effSkill(shooter.player, "finishing", shooter.slotPos) + (hasTrait(shooter.player, "Cabeceio") ? 15 : 0);
       if (rng() < U.clamp(finish / (finish + gkSkill * 2.6), 0.08, 0.5)) {
-        goal(att, shooter, min, "de cabeça, após escanteio");
+        if (taker && taker.player !== shooter.player) {
+          taker.player.seasonStats.assists++;
+          addRating(taker.player, 0.7);
+        }
+        goal(att, shooter, min, "de cabeça, após escanteio" + (taker && taker.player !== shooter.player ? " cobrado por " + taker.player.name : ""), true);
       } else {
         log(min, "chance", shooter.player.name + " cabeceia após o escanteio, mas a defesa afasta.", att);
       }
     }
 
-    function goal(att, shooter, min, how) {
+    function goal(att, shooter, min, how, skipAssist) {
       if (att.key === "h") state.gh++; else state.ga++;
-      const assister = rng() < 0.7 ? pickAssister(att.team.lineup, rng, shooter.player) : null;
+      const assister = !skipAssist && rng() < 0.7 ? pickAssister(att.team.lineup, rng, shooter.player) : null;
       shooter.player.seasonStats.goals++;
       shooter.player.matchGoals = (shooter.player.matchGoals || 0) + 1;
       if (assister) { assister.player.seasonStats.assists++; addRating(assister.player, 0.7); }
@@ -266,7 +296,7 @@
       }
       // falta perigosa → chance de gol de falta
       if (rng() < 0.18) {
-        const kicker = bestFreeKicker(att.team.lineup);
+        const kicker = bestFreeKicker(att.team);
         if (kicker) {
           const gkSlot = def.team.lineup[0];
           const gkSkill = gkSlot && gkSlot.player ? effSkill(gkSlot.player, "gk", "GOL") : 25;
@@ -282,18 +312,28 @@
       }
     }
 
-    function bestFreeKicker(lineup) {
-      const cands = starters(lineup).filter(s => s.slotPos !== "GOL");
+    function bestFreeKicker(team) {
+      const chosen = designated(team, "freeKick");
+      if (chosen) return chosen;
+      const cands = starters(team.lineup).filter(s => s.slotPos !== "GOL");
       if (!cands.length) return null;
       return cands.slice().sort((a, b) =>
         (b.player.skills.technique + b.player.skills.finishing) - (a.player.skills.technique + a.player.skills.finishing))[0];
     }
 
     function penaltyEvent(att, min) {
-      const def = att.other;
-      const taker = bestPenaltyTaker(att.team.lineup);
-      if (!taker) return;
       log(min, "penalty", "PÊNALTI para " + att.team.club.name + "!", att);
+      // técnico humano escolhe o batedor na hora
+      if (opts.interactiveSide && opts.interactiveSide === att.key) {
+        state.pendingPenalty = { sideKey: att.key, min };
+        return;
+      }
+      takePenalty(att, bestPenaltyTaker(att.team.lineup), min);
+    }
+
+    function takePenalty(att, taker, min) {
+      if (!taker || !taker.player) return;
+      const def = att.other;
       const gkSlot = def.team.lineup[0];
       const gkSkill = gkSlot && gkSlot.player ? effSkill(gkSlot.player, "gk", "GOL") : 25;
       const gkBonus = gkSlot && gkSlot.player && hasTrait(gkSlot.player, "Defesa de pênalti") ? 14 : 0;
@@ -306,6 +346,18 @@
         taker.player.moral = U.clamp(taker.player.moral - 8, 0, 100);
         log(min, "miss", taker.player.name + " desperdiça o pênalti!", att);
       }
+    }
+
+    /* UI resolve o pênalti pendente com o batedor escolhido. */
+    function resolvePenalty(takerId) {
+      const pend = state.pendingPenalty;
+      if (!pend) return { ok: false };
+      state.pendingPenalty = null;
+      const att = pend.sideKey === "h" ? sides[0] : sides[1];
+      let taker = att.team.lineup.find(s => s.player && s.player.id === takerId && s.slotPos !== "GOL");
+      if (!taker) taker = bestPenaltyTaker(att.team.lineup);
+      takePenalty(att, taker, pend.min);
+      return { ok: true };
     }
 
     function bestPenaltyTaker(lineup) {
@@ -321,7 +373,48 @@
       const weeks = 1 + Math.floor(rng() * rng() * 8);
       victim.player.injuryWeeks = weeks;
       log(min, "injury", victim.player.name + " se machucou e não pode continuar (" + weeks + (weeks === 1 ? " semana" : " semanas") + " fora).", side);
+      // técnico humano escolhe o substituto na hora
+      if (opts.interactiveSide && opts.interactiveSide === side.key) {
+        const slotIndex = side.team.lineup.indexOf(victim);
+        const outName = victim.player.name;
+        victim.player = null;
+        state.pendingInjury = { sideKey: side.key, min, slotIndex, outName };
+        return;
+      }
       removePlayer(side, victim, true);
+    }
+
+    /* UI resolve a lesão pendente: entra alguém do banco (ou null = jogar com um a menos). */
+    function resolveInjury(inPlayerId) {
+      const pend = state.pendingInjury;
+      if (!pend) return { ok: false };
+      state.pendingInjury = null;
+      const side = pend.sideKey === "h" ? sides[0] : sides[1];
+      const slot = side.team.lineup[pend.slotIndex];
+      if (!inPlayerId || !slot) return { ok: true, subbed: false };
+      if ((side.team.subsUsed || 0) >= 5) return { ok: true, subbed: false, reason: "Limite de substituições atingido." };
+      const idx = side.team.bench.findIndex(p => p.id === inPlayerId && !p.injuryWeeks);
+      if (idx < 0) return { ok: true, subbed: false, reason: "Jogador não está no banco." };
+      const inP = side.team.bench.splice(idx, 1)[0];
+      slot.player = inP;
+      inP.matchPlayed = true;
+      state.ratings.set(inP.id, 6);
+      side.team.subsUsed = (side.team.subsUsed || 0) + 1;
+      log(state.minute, "sub", "Substituição no " + side.team.club.name + ": entra " + inP.name + " no lugar do lesionado.", side);
+      return { ok: true, subbed: true };
+    }
+
+    /* Troca dois jogadores de posição em campo (não gasta substituição). */
+    function swapPositions(sideKey, idA, idB) {
+      const side = sideKey === "h" ? sides[0] : sides[1];
+      const a = side.team.lineup.find(s => s.player && s.player.id === idA);
+      const b = side.team.lineup.find(s => s.player && s.player.id === idB);
+      if (!a || !b) return { ok: false, reason: "Jogador inválido." };
+      const tmp = a.player;
+      a.player = b.player;
+      b.player = tmp;
+      log(state.minute, "info", "Ajuste tático no " + side.team.club.name + ": " + a.player.name + " e " + b.player.name + " trocam de posição.", side);
+      return { ok: true };
     }
 
     function removePlayer(side, slot, canSub) {
@@ -352,14 +445,21 @@
 
     function playMinute() {
       if (finished) return;
+      if (state.pendingPenalty || state.pendingInjury) return; // aguardando decisão do técnico
       if (phase === "halftime") phase = "second";
       clock++;
       const m = state.minute = phase === "first" ? Math.min(clock, 45) : Math.min(45 + (clock - endFirstHalf), 90);
-      // desgaste
+      // desgaste realista: idade pesa muito, resistência ajuda, velocistas gastam mais
       for (const s of sides) for (const slot of starters(s.team.lineup)) {
         const p = slot.player;
-        let drain = 0.55;
-        if (hasTrait(p, "Resistência")) drain *= 0.7;
+        let drain = 0.34;
+        if (p.age <= 21) drain *= 0.8;
+        else if (p.age <= 25) drain *= 0.9;
+        else if (p.age >= 34) drain *= 1.4;
+        else if (p.age >= 32) drain *= 1.28;
+        else if (p.age >= 30) drain *= 1.12;
+        if (hasTrait(p, "Resistência")) drain *= 0.65;
+        if (hasTrait(p, "Velocidade")) drain *= 1.12; // jogo explosivo cansa mais
         if (s.team.tactics.style === "ataque") drain *= 1.12;
         if (s.team.tactics.marking === "muito pesada") drain *= 1.1;
         p.energy = Math.max(20, p.energy - drain);
@@ -448,12 +548,24 @@
 
     return {
       home: homeTeam, away: awayTeam, events, state,
-      playMinute, substitute, result,
+      playMinute, substitute, result, resolvePenalty, resolveInjury, swapPositions,
       get phase() { return phase; },
       get finished() { return finished; },
       get minute() { return state.minute; },
+      get pendingPenalty() { return state.pendingPenalty || null; },
+      get pendingInjury() { return state.pendingInjury || null; },
       resumeSecondHalf() { if (phase === "halftime") phase = "second"; },
-      finishNow() { while (!finished) playMinute(); }
+      finishNow() {
+        while (!finished) {
+          if (state.pendingPenalty) resolvePenalty(null);
+          if (state.pendingInjury) {
+            const side = state.pendingInjury.sideKey === "h" ? sides[0] : sides[1];
+            const best = side.team.bench.filter(p => !p.injuryWeeks)[0];
+            resolveInjury(best ? best.id : null);
+          }
+          playMinute();
+        }
+      }
     };
   }
 

@@ -18,6 +18,7 @@
     training: "auto",
     news: [],
     aiOffers: [],         // propostas da IA por jogadores do usuário
+    setPieces: null,      // { captain, freeKick, cornerLeft, cornerRight }
     week: 1,
     pendingLiveRound: null,
     lastRoundResults: null,
@@ -62,6 +63,28 @@
       starters: picked.lineup.map(s => s.player ? s.player.id : null),
       bench: picked.bench.map(p => p.id)
     };
+    autoAssignSetPieces();
+  }
+
+  /* Capitão e cobradores: mantém a escolha do técnico se o jogador segue no elenco;
+     senão escolhe o melhor candidato automaticamente. */
+  function autoAssignSetPieces() {
+    const club = userClub();
+    const byId = {};
+    for (const p of club.players) byId[p.id] = p;
+    const starters = state.userSquad.starters.map(id => byId[id]).filter(Boolean);
+    if (!starters.length) return;
+    const sp = state.setPieces || {};
+    const keep = id => id && byId[id] ? id : null;
+    const bestBy = fn => starters.filter(p => p.pos !== "GOL").sort((a, b) => fn(b) - fn(a))[0];
+    const crossScore = p => p.skills.pass + p.skills.technique * 0.5 + (p.traits.includes("Cruzamento") ? 25 : 0);
+    state.setPieces = {
+      captain: keep(sp.captain) || (starters.slice().sort((a, b) => (b.rating + b.age) - (a.rating + a.age))[0] || {}).id || null,
+      freeKick: keep(sp.freeKick) || (bestBy(p => p.skills.technique + p.skills.finishing) || {}).id || null,
+      // preferência de pé por lado do escanteio
+      cornerLeft: keep(sp.cornerLeft) || (bestBy(p => crossScore(p) + (p.foot === "E" ? 18 : 0)) || {}).id || null,
+      cornerRight: keep(sp.cornerRight) || (bestBy(p => crossScore(p) + (p.foot === "D" ? 18 : 0)) || {}).id || null
+    };
   }
 
   /* Monta o objeto "team" para o motor a partir da escalação do usuário. */
@@ -89,7 +112,14 @@
     }
     const bench = state.userSquad.bench.map(id => byId[id])
       .filter(p => p && !used.has(p.id) && !p.injuryWeeks && !p.suspended && p.contractYears > 0);
-    return { club, lineup, bench, tactics: { style: state.tactics.style, marking: state.tactics.marking }, subsUsed: 0 };
+    const sp = state.setPieces || {};
+    return {
+      club, lineup, bench,
+      tactics: { style: state.tactics.style, marking: state.tactics.marking },
+      captainId: sp.captain || null,
+      setPieces: { freeKick: sp.freeKick || null, cornerLeft: sp.cornerLeft || null, cornerRight: sp.cornerRight || null },
+      subsUsed: 0
+    };
   }
 
   function aiTeam(club) {
@@ -321,7 +351,9 @@
       for (const p of c.players) {
         if (p.injuryWeeks > 0) p.injuryWeeks--;
         if (p.suspended > 0 && c.id !== club.id) p.suspended = Math.max(0, p.suspended - 1);
-        p.energy = Math.round(Math.min(100, p.energy + 30));
+        // recuperação semanal: jovens recuperam mais rápido que veteranos
+        const recovery = 40 + (p.age <= 25 ? 10 : p.age >= 32 ? -5 : 0);
+        p.energy = Math.round(Math.min(100, p.energy + recovery));
         p.moral = Math.round(p.moral);
         p.form = Math.round((p.form || 0) * 10) / 10;
         p.seasonStats.ratingSum = Math.round(p.seasonStats.ratingSum * 10) / 10;
@@ -507,7 +539,7 @@
       world: { ...state.world, players: undefined },
       season: state.season, coach: state.coach, tactics: state.tactics,
       userSquad: state.userSquad, training: state.training, news: state.news,
-      aiOffers: state.aiOffers, week: state.week
+      aiOffers: state.aiOffers, week: state.week, setPieces: state.setPieces
     };
     try {
       localStorage.setItem(SAVE_KEY + (slot || 1), JSON.stringify(data));
@@ -524,20 +556,26 @@
     state.world = data.world;
     state.world.players = {};
     for (const club of Object.values(state.world.clubs)) {
-      for (const p of club.players) state.world.players[p.id] = p;
+      for (const p of club.players) {
+        state.world.players[p.id] = p;
+        // migração de saves antigos: pé preferido
+        if (!p.foot) p.foot = p.side === "E" ? "E" : "D";
+      }
     }
     state.season = data.season; state.coach = data.coach; state.tactics = data.tactics;
     state.userSquad = data.userSquad; state.training = data.training; state.news = data.news || [];
     state.aiOffers = data.aiOffers || []; state.week = data.week || 1;
+    state.setPieces = data.setPieces || null;
     state.pendingLiveRound = null;
     state.started = true;
+    if (!state.setPieces) autoAssignSetPieces();
     return { ok: true };
   }
 
   function hasSave(slot) { return !!localStorage.getItem(SAVE_KEY + (slot || 1)); }
 
   window.TF.game = {
-    state, newCareer, userClub, userTeam, aiTeam, autoLineup, nextSlot, completeLiveRound,
+    state, newCareer, userClub, userTeam, aiTeam, autoLineup, autoAssignSetPieces, nextSlot, completeLiveRound,
     processSlot, endOfSeason, save, load, hasSave, addNews, recomputeRating, transferWindowInfo
   };
 })();

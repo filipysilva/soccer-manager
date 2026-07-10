@@ -139,10 +139,11 @@
     switch (type) {
       case "goal":
         if (!audio()) return;
-        whistleBurst(ctx.currentTime, 0.18);
-        crowdSwell({ attack: 0.06, hold: 0.5, decay: 2.6, peak: 0.5, freq: 950, q: 0.5 });
-        crowdSwell({ attack: 0.1, hold: 0.4, decay: 2.2, peak: 0.25, freq: 500, q: 0.6, delay: 0.05 });
-        applause(2.2, 0.10);
+        // explosão instantânea da torcida: grito agudo + massa grave, curto e forte
+        crowdSwell({ attack: 0.02, hold: 0.25, decay: 1.0, peak: 0.6, freq: 1500, q: 0.9 });
+        crowdSwell({ attack: 0.02, hold: 0.3, decay: 1.2, peak: 0.45, freq: 700, q: 0.6 });
+        crowdSwell({ attack: 0.15, hold: 0.2, decay: 0.9, peak: 0.2, freq: 2400, q: 1.2, delay: 0.05 });
+        applause(1.3, 0.12);
         break;
       case "goalOther": // gol em outro jogo da rodada: rugido distante
         crowdSwell({ attack: 0.1, hold: 0.15, decay: 1.1, peak: 0.12, freq: 700, q: 0.7 });

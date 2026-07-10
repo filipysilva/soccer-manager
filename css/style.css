@@ -237,6 +237,23 @@ tr.me td { background: var(--row-me) !important; }
 .match-card .mc-score { display: block; font-weight: 800; font-size: 1rem; }
 .match-card .mc-min { display: block; font-size: .7rem; color: var(--green); font-weight: 700; }
 
+.round-body { display: grid; grid-template-columns: 1fr 320px; gap: 12px; margin-top: 14px; align-items: start; }
+@media (max-width: 980px) { .round-body { grid-template-columns: 1fr; } }
+.my-panel { margin-bottom: 0; padding: 12px 14px; }
+.my-panel h3 { margin: 0 0 8px; }
+.seg-row { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
+.seg-row .seg { padding: 3px 8px; font-size: .74rem; }
+.xi-list { margin-top: 8px; max-height: 380px; overflow-y: auto; }
+.xi-row {
+  display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px;
+  cursor: pointer; font-size: .84rem;
+}
+.xi-row:hover { background: var(--row-hover); }
+.xi-row.sel { background: var(--row-hover); box-shadow: inset 2px 0 0 var(--accent); }
+.xi-row .xi-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.xi-actions { padding: 6px 8px 8px 30px; background: var(--bg2); border-radius: 0 0 8px 8px; margin-bottom: 4px; }
+.xi-actions .btn { margin: 2px 3px 2px 0; }
+
 /* ---------- partida ao vivo ---------- */
 .match-screen { max-width: 900px; margin: 0 auto; }
 .scoreboard {

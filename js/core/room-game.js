@@ -289,7 +289,8 @@
         for (const p of c.players) {
           if (p.injuryWeeks > 0) p.injuryWeeks--;
           if (p.suspended > 0) p.suspended--;
-          p.energy = Math.round(Math.min(100, p.energy + 30));
+          const recovery = 40 + (p.age <= 25 ? 10 : p.age >= 32 ? -5 : 0);
+          p.energy = Math.round(Math.min(100, p.energy + recovery));
           p.moral = Math.round(p.moral);
           p.joinedRecently = false;
         }

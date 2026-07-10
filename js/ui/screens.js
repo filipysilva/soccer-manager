@@ -112,14 +112,14 @@
     el.innerHTML =
       "<h2>Elenco <span class='muted' style='font-size:.9rem'>(" + players.length + " jogadores · salários " + money(F().squadWages(club)) + "/rodada)</span></h2>" +
       '<div class="card scroll-x mb0"><table class="data"><thead><tr>' +
-      "<th>Pos</th><th>Nome</th><th class='num'>Idade</th><th>Lado</th><th class='num'>Força</th><th>Características</th><th>Energia</th><th>Moral</th><th class='num'>Nota</th><th class='num'>J</th><th class='num'>G</th><th class='num'>Salário</th><th class='num'>Contrato</th><th class='num'>Valor</th><th>Status</th>" +
+      "<th>Pos</th><th>Nome</th><th class='num'>Idade</th><th>Pé</th><th class='num'>Força</th><th>Características</th><th>Energia</th><th>Moral</th><th class='num'>Nota</th><th class='num'>J</th><th class='num'>G</th><th class='num'>Salário</th><th class='num'>Contrato</th><th class='num'>Valor</th><th>Status</th>" +
       "</tr></thead><tbody>" +
       players.map(p =>
         '<tr data-p="' + p.id + '" style="cursor:pointer">' +
         "<td>" + UI().posBadge(p.pos) + "</td>" +
         "<td><b>" + esc(p.name) + "</b></td>" +
         '<td class="num">' + p.age + "</td>" +
-        "<td>" + (p.side === "E" ? "Esq" : p.side === "D" ? "Dir" : "Amb") + "</td>" +
+        "<td>" + (p.foot === "E" ? "Canhoto" : p.foot === "A" ? "Ambidestro" : "Destro") + "</td>" +
         '<td class="num">' + UI().ratingBadge(p.rating) + "</td>" +
         "<td>" + p.traits.map(t => '<span class="trait">' + esc(t) + "</span>").join("") + "</td>" +
         "<td>" + barHtml(p.energy) + "</td>" +
@@ -277,7 +277,7 @@
       "</div></div>" +
       '<div class="lineup-wrap">' +
         '<div class="pitch" id="pitch"><div class="center-line"></div><div class="center-circle"></div></div>' +
-        '<div class="card mb0" id="bench-card"></div>' +
+        '<div><div class="card" id="setpieces-card"></div><div class="card mb0" id="bench-card"></div></div>' +
       "</div>";
 
     function drawPitch() {
@@ -292,13 +292,35 @@
         div.className = "shirt" + (p ? "" : " empty") + (pos === "GOL" ? " gk" : "");
         div.style.left = x + "%";
         div.style.top = (100 - y) + "%";
+        const isCap = p && st.setPieces && st.setPieces.captain === p.id;
         div.innerHTML =
           '<div class="jersey">' + (p ? Math.round(p.rating) : pos) + "</div>" +
           '<div class="pname' + (p && p.pos !== pos ? " improv" : "") + '">' +
-          (p ? esc(p.name.split(" ").slice(-1)[0]) + (unavailable ? " ⚠" : "") : "vazio") + "</div>";
+          (p ? (isCap ? "© " : "") + esc(p.name.split(" ").slice(-1)[0]) + (unavailable ? " ⚠" : "") : "vazio") + "</div>";
         div.addEventListener("click", () => pickPlayerForSlot(i, pos));
         pitch.appendChild(div);
       });
+    }
+
+    function drawSetPieces() {
+      G_.autoAssignSetPieces();
+      const sp = st.setPieces;
+      const starters = st.userSquad.starters.map(id => byId[id]).filter(Boolean);
+      const options = (selected, gkOk) => starters
+        .filter(p => gkOk || p.pos !== "GOL")
+        .map(p => '<option value="' + p.id + '"' + (p.id === selected ? " selected" : "") + ">" + esc(p.name) + " (" + p.pos + ")</option>").join("");
+      el.querySelector("#setpieces-card").innerHTML =
+        "<h3 style='margin-top:0'>Capitão e cobradores</h3>" +
+        '<div class="row" style="flex-direction:column;align-items:stretch;gap:8px">' +
+          '<label>👑 Capitão: <select data-sp="captain" style="width:100%">' + options(sp.captain, true) + "</select></label>" +
+          '<label>🎯 Faltas: <select data-sp="freeKick" style="width:100%">' + options(sp.freeKick) + "</select></label>" +
+          '<label>◀ Escanteio esq.: <select data-sp="cornerLeft" style="width:100%">' + options(sp.cornerLeft) + "</select></label>" +
+          '<label>▶ Escanteio dir.: <select data-sp="cornerRight" style="width:100%">' + options(sp.cornerRight) + "</select></label>" +
+        "</div>" +
+        "<p class='muted' style='font-size:.78rem;margin-top:8px'>O capitão em campo melhora o rendimento do time (experiência conta). Os cobradores valem para faltas e escanteios de cada lado.</p>";
+      el.querySelectorAll("[data-sp]").forEach(sel => sel.addEventListener("change", e => {
+        st.setPieces[e.target.dataset.sp] = e.target.value;
+      }));
     }
 
     function drawBench() {
@@ -340,7 +362,7 @@
             st.userSquad.starters[slotIndex] = pid;
             rebuildBench();
             ov.remove();
-            drawPitch(); drawBench();
+            drawPitch(); drawBench(); drawSetPieces();
           }));
         });
     }
@@ -367,6 +389,7 @@
     rebuildBench();
     drawPitch();
     drawBench();
+    drawSetPieces();
   };
 
   // ---------------- CLASSIFICAÇÃO ----------------
@@ -476,14 +499,15 @@
         const round = league.rounds[slot.round];
         if (!round) continue;
         const f = round.find(([h, a]) => h === club.id || a === club.id);
-        if (f) upcoming.push({ label: "Rodada " + (slot.round + 1), home: f[0], away: f[1] });
+        if (f) upcoming.push({ label: league.name, sub: "Rodada " + (slot.round + 1), home: f[0], away: f[1] });
       } else if (slot.type === "cup") {
         const cup = st.season.cups[club.countryId];
+        const cupName = world.countries[club.countryId].cupName;
         if (cup.phase === slot.phase && !cup.championId) {
           const t = cup.ties.find(t => t.home === club.id || t.away === club.id);
-          if (t) upcoming.push({ label: cup.phaseName + " — Copa", home: t.home, away: t.away });
+          if (t) upcoming.push({ label: cupName, sub: cup.phaseName, home: t.home, away: t.away });
         } else if (!cup.championId && slot.phase >= cup.phase) {
-          upcoming.push({ label: (C().CUP_PHASES[slot.phase] || "Copa") + " — Copa", home: null, away: null });
+          upcoming.push({ label: cupName, sub: C().CUP_PHASES[slot.phase] || "", home: null, away: null });
         }
       }
     }
@@ -492,9 +516,10 @@
       "<h2>Jogos</h2>" +
       '<div class="card"><h3 style="margin-top:0">Próximos compromissos</h3><table class="data"><tbody>' +
       (upcoming.length ? upcoming.map(u => {
-        if (!u.home) return '<tr><td class="muted">' + esc(u.label) + '</td><td colspan="3" class="muted">aguardando sorteio / classificação</td></tr>';
+        const compCell = '<td><b>' + esc(u.label) + '</b><div class="muted" style="font-size:.76rem">' + esc(u.sub || "") + "</div></td>";
+        if (!u.home) return "<tr>" + compCell + '<td colspan="3" class="muted">aguardando sorteio / classificação</td></tr>';
         const h = world.clubs[u.home], a = world.clubs[u.away];
-        return '<tr><td class="muted">' + esc(u.label) + '</td><td><span class="club-cell">' + UI().crestImg(h, 18) + esc(h.name) + "</span></td><td style='text-align:center'>x</td><td><span class=\"club-cell\">" + UI().crestImg(a, 18) + esc(a.name) + "</span></td></tr>";
+        return "<tr>" + compCell + '<td><span class="club-cell">' + UI().crestImg(h, 18) + esc(h.name) + "</span></td><td style='text-align:center'>x</td><td><span class=\"club-cell\">" + UI().crestImg(a, 18) + esc(a.name) + "</span></td></tr>";
       }).join("") : '<tr><td class="muted">Sem jogos futuros nesta temporada.</td></tr>') +
       "</tbody></table></div>" + lastHtml;
   };
