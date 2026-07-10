@@ -1,7 +1,9 @@
 "use strict";
-/* Rodada ao vivo: todos os jogos do campeonato ao mesmo tempo, com painel do
-   seu time sempre visível (táticas em um clique, substituições e trocas de posição),
-   pênalti com escolha de batedor e lesão com substituição na hora. */
+/* Rodada ao vivo: todos os jogos do campeonato ao mesmo tempo.
+   - Clicar no SEU jogo abre a tela de gestão (pausa o jogo): campo com os jogadores
+     para trocar de posição, substituir e mudar táticas. "Pronto" despausa.
+   - Clicar em outro jogo só mostra as estatísticas dele, sem pausar.
+   - Pênalti: você escolhe o batedor. Lesão: você escolhe o substituto. */
 (function () {
   const U = window.TF.util;
   const UI = () => window.TF.ui;
@@ -24,36 +26,41 @@
     const userGame = games[userIdx];
     const userTeam = userGame.entry.isHome ? userGame.entry.home : userGame.entry.away;
     const userSideKey = userGame.entry.isHome ? "h" : "a";
+    const formationName = (G().state.tactics && G().state.tactics.formationName) || "4-4-2";
 
     let selectedIdx = userIdx;
     let timer = null;
     let speed = 220;
-    let panelSelected = null; // jogador selecionado no painel do time
+    let manageOverlay = null;   // overlay de gestão aberto
+    let manageSel = null;       // jogador selecionado no campo de gestão
 
     el.innerHTML =
       '<div class="content" style="height:100vh;overflow-y:auto"><div class="round-screen">' +
         '<div class="round-head"><h2 style="margin:0;font-size:1.15rem">' + esc(label) + '</h2><div class="round-controls" id="controls"></div></div>' +
         '<div class="round-grid" id="grid"></div>' +
-        '<div class="round-body"><div class="round-detail" id="detail"></div><div class="card my-panel" id="my-panel"></div></div>' +
+        '<div class="round-detail" id="detail"></div>' +
       "</div></div>";
 
     const $grid = el.querySelector("#grid");
     const $controls = el.querySelector("#controls");
     const $detail = el.querySelector("#detail");
-    const $panel = el.querySelector("#my-panel");
 
     // ---------- grade de placares ----------
     function buildGrid() {
       $grid.innerHTML = games.map((g, i) => {
         const e = g.entry;
         return '<div class="match-card' + (e.isUser ? " user" : "") + (i === selectedIdx ? " selected" : "") + '" data-i="' + i + '">' +
+          (e.isUser ? '<div class="mc-tag">⚙️ seu jogo — clique para gerir</div>' : "") +
+          '<div class="mc-row">' +
           '<div class="mc-side">' + UI().crestImg(e.home.club, 22) + '<span class="mc-name">' + esc(e.home.club.shortName) + "</span></div>" +
           '<div class="mc-mid"><span class="mc-score" data-score>0 x 0</span><span class="mc-min" data-min>0\'</span></div>' +
           '<div class="mc-side right"><span class="mc-name">' + esc(e.away.club.shortName) + "</span>" + UI().crestImg(e.away.club, 22) + "</div>" +
-        "</div>";
+          "</div></div>";
       }).join("");
       $grid.querySelectorAll(".match-card").forEach(card => card.addEventListener("click", () => {
-        selectedIdx = parseInt(card.dataset.i, 10);
+        const i = parseInt(card.dataset.i, 10);
+        if (i === userIdx) { openManagement(); return; }   // seu jogo → gerir (pausa)
+        selectedIdx = i;                                    // outro jogo → só estatísticas
         $grid.querySelectorAll(".match-card").forEach(c => c.classList.toggle("selected", c === card));
         buildDetail();
       }));
@@ -69,7 +76,7 @@
       });
     }
 
-    // ---------- detalhe do jogo selecionado ----------
+    // ---------- detalhe do jogo selecionado (só leitura) ----------
     function buildDetail() {
       const g = games[selectedIdx];
       const e = g.entry;
@@ -79,6 +86,7 @@
           '<div><div class="score" id="d-score"></div><div class="minute" id="d-min"></div></div>' +
           '<div class="team right">' + UI().crestImg(e.away.club, 40) + "<span>" + esc(e.away.club.name) + "</span></div>" +
         "</div>" +
+        (e.isUser ? '<div class="watch-hint">👁️ Você está assistindo ao seu jogo. Clique no seu card acima (ou em <b>Gerir meu time</b>) para pausar e mexer no time.</div>' : "") +
         '<div class="match-events" id="d-events" style="height:260px"></div>' +
         '<div class="match-stats" id="d-stats"></div>';
       const $ev = $detail.querySelector("#d-events");
@@ -113,66 +121,138 @@
       function row(a, n, b) { return '<div class="sh">' + a + '</div><div class="sname">' + n + '</div><div class="sa">' + b + "</div>"; }
     }
 
-    // ---------- painel do meu time ----------
-    function buildPanel() {
-      const t = userTeam.tactics;
+    // ---------- tela de gestão (pausa o jogo) ----------
+    function openManagement() {
+      if (manageOverlay || userGame.match.finished) return;
+      pause();
+      manageSel = null;
+      manageOverlay = document.createElement("div");
+      manageOverlay.className = "modal-overlay manage-overlay";
+      manageOverlay.innerHTML =
+        '<div class="modal manage-modal">' +
+          '<div class="manage-head">' +
+            "<h3 style='margin:0'>Gerir meu time <span class='muted' id='m-clock'></span></h3>" +
+            '<button class="btn primary" id="m-ready">✔ Pronto — voltar ao jogo</button>' +
+          "</div>" +
+          '<div class="manage-tactics" id="m-tactics"></div>' +
+          '<div class="manage-grid">' +
+            '<div class="pitch" id="m-pitch"><div class="center-line"></div><div class="center-circle"></div></div>' +
+            '<div id="m-side"></div>' +
+          "</div>" +
+          "<p class='muted' style='font-size:.78rem;margin-top:6px'>Clique num jogador em campo para selecioná-lo. Clique em <b>outro jogador do campo</b> para trocar as posições, ou num jogador do <b>banco</b> para substituir. * = improvisado.</p>" +
+        "</div>";
+      document.body.appendChild(manageOverlay);
+      manageOverlay.addEventListener("click", e => { if (e.target === manageOverlay) closeManagement(); });
+      manageOverlay.querySelector("#m-ready").addEventListener("click", closeManagement);
+      renderManageTactics();
+      renderManagePitch();
+      renderManageSide();
+      updateManageClock();
+    }
+
+    function closeManagement() {
+      if (!manageOverlay) return;
+      manageOverlay.remove();
+      manageOverlay = null;
+      manageSel = null;
+      // "Pronto" despausa automaticamente
+      if (userGame.match.finished) { renderControls(); return; }
+      if (userGame.match.phase === "halftime") { userGame.match.resumeSecondHalf(); window.TF.sounds.play("kickoff"); }
+      selectedIdx = userIdx;
+      buildDetail();
+      play();
+    }
+
+    function updateManageClock() {
+      if (!manageOverlay) return;
+      const c = manageOverlay.querySelector("#m-clock");
       const subsLeft = 5 - (userTeam.subsUsed || 0);
-      const seg = (name, current, opts2) =>
-        '<div class="seg-row"><span class="muted" style="min-width:70px;font-size:.78rem">' + name + "</span>" +
-        opts2.map(([v, l]) => '<button class="btn small seg' + (current === v ? " primary" : "") + '" data-' + (name === "Estilo" ? "style" : "mark") + '="' + v + '">' + l + "</button>").join("") + "</div>";
+      c.textContent = "· " + (userGame.match.phase === "halftime" ? "Intervalo" : userGame.match.minute + "'") +
+        " · placar " + userGame.match.state.gh + "x" + userGame.match.state.ga + " · " + subsLeft + " substituições restantes";
+    }
 
-      const xi = userTeam.lineup.filter(s => s.player);
+    function renderManageTactics() {
+      const t = userTeam.tactics;
+      const seg = (name, key, current, opts) =>
+        '<div class="seg-row"><span class="muted" style="min-width:64px;font-size:.8rem">' + name + "</span>" +
+        opts.map(([v, l]) => '<button class="btn small seg' + (current === v ? " primary" : "") + '" data-tac="' + key + '" data-val="' + v + '">' + l + "</button>").join("") + "</div>";
+      const box = manageOverlay.querySelector("#m-tactics");
+      box.innerHTML =
+        seg("Estilo", "style", t.style, [["equilibrado", "Equilibrado"], ["ataque", "Ataque total"], ["retranca", "Retranca"]]) +
+        seg("Marcação", "marking", t.marking, [["leve", "Leve"], ["pesada", "Pesada"], ["muito pesada", "Muito pesada"]]);
+      box.querySelectorAll("[data-tac]").forEach(b => b.addEventListener("click", () => {
+        userTeam.tactics[b.dataset.tac] = b.dataset.val;
+        renderManageTactics();
+        UI().toast("Tática aplicada.");
+      }));
+    }
+
+    function renderManagePitch() {
+      const pitch = manageOverlay.querySelector("#m-pitch");
+      pitch.querySelectorAll(".shirt").forEach(s => s.remove());
+      const coords = M().FORMATION_COORDS[formationName] || M().FORMATION_COORDS["4-4-2"];
       const capId = userTeam.captainId;
-      $panel.innerHTML =
-        "<h3 style='margin-top:0'>Meu time <span class='muted' style='text-transform:none'>· " + subsLeft + " substituições restantes</span></h3>" +
-        seg("Estilo", t.style, [["equilibrado", "Equilibrado"], ["ataque", "Ataque"], ["retranca", "Retranca"]]) +
-        seg("Marcação", t.marking, [["leve", "Leve"], ["pesada", "Pesada"], ["muito pesada", "M. pesada"]]) +
-        '<div class="xi-list">' +
-        xi.map(s => {
-          const p = s.player;
-          const sel = panelSelected === p.id;
-          let row = '<div class="xi-row' + (sel ? " sel" : "") + '" data-xi="' + p.id + '">' +
-            UI().posBadge(s.slotPos) + "<span class='xi-name'>" + (capId === p.id ? "© " : "") + esc(p.name.split(" ").slice(-1)[0]) + (p.pos !== s.slotPos ? " <span class='muted'>*</span>" : "") + "</span>" +
-            '<span class="bar" style="width:44px"><i style="width:' + Math.round(p.energy) + "%;background:" + (p.energy > 60 ? "var(--green)" : p.energy > 35 ? "var(--yellow)" : "var(--red)") + '"></i></span>' +
-            "</div>";
-          if (sel) {
-            const bench = userTeam.bench.filter(b => !b.injuryWeeks);
-            row += '<div class="xi-actions">' +
-              (subsLeft > 0 && bench.length ?
-                "<div class='muted' style='font-size:.75rem;margin-bottom:3px'>⬆ Substituir por:</div>" +
-                bench.map(b => '<button class="btn small" data-subin="' + b.id + '">' + esc(b.name.split(" ").slice(-1)[0]) + " (" + b.pos + " " + Math.round(b.rating) + ")</button>").join("") : "") +
-              "<div class='muted' style='font-size:.75rem;margin:5px 0 3px'>⇄ Trocar posição com:</div>" +
-              xi.filter(o => o.player.id !== p.id && o.slotPos !== "GOL" && s.slotPos !== "GOL").slice(0, 10)
-                .map(o => '<button class="btn small" data-swap="' + o.player.id + '">' + esc(o.player.name.split(" ").slice(-1)[0]) + " (" + o.slotPos + ")</button>").join("") +
-              "</div>";
-          }
-          return row;
-        }).join("") +
-        "</div>" +
-        "<p class='muted' style='font-size:.72rem;margin-top:6px'>Clique num jogador para substituir ou trocar de posição. * = improvisado.</p>";
+      userTeam.lineup.forEach((slot, i) => {
+        const p = slot.player;
+        const [x, y] = coords[i] || [50, 50];
+        const div = document.createElement("div");
+        const sel = p && manageSel === p.id;
+        div.className = "shirt" + (p ? "" : " empty") + (slot.slotPos === "GOL" ? " gk" : "") + (sel ? " selected" : "");
+        div.style.left = x + "%";
+        div.style.top = (100 - y) + "%";
+        const low = p && p.energy < 40;
+        div.innerHTML =
+          '<div class="jersey">' + (p ? Math.round(p.rating) : slot.slotPos) + "</div>" +
+          '<div class="pname' + (p && p.pos !== slot.slotPos ? " improv" : "") + '">' +
+          (p ? (capId === p.id ? "© " : "") + esc(p.name.split(" ").slice(-1)[0]) + (low ? " 🔋" : "") : slot.slotPos) + "</div>";
+        div.addEventListener("click", () => onPitchClick(slot));
+        pitch.appendChild(div);
+      });
+    }
 
-      $panel.querySelectorAll("[data-style]").forEach(b => b.addEventListener("click", () => {
-        userTeam.tactics.style = b.dataset.style;
-        buildPanel();
-      }));
-      $panel.querySelectorAll("[data-mark]").forEach(b => b.addEventListener("click", () => {
-        userTeam.tactics.marking = b.dataset.mark;
-        buildPanel();
-      }));
-      $panel.querySelectorAll("[data-xi]").forEach(r => r.addEventListener("click", () => {
-        panelSelected = panelSelected === r.dataset.xi ? null : r.dataset.xi;
-        buildPanel();
-      }));
-      $panel.querySelectorAll("[data-subin]").forEach(b => b.addEventListener("click", ev => {
-        ev.stopPropagation();
-        const r = userGame.match.substitute(userSideKey, panelSelected, b.dataset.subin);
-        if (r.ok) { window.TF.sounds.play("sub"); panelSelected = null; syncAll(); }
-        else UI().toast(r.reason);
-      }));
-      $panel.querySelectorAll("[data-swap]").forEach(b => b.addEventListener("click", ev => {
-        ev.stopPropagation();
-        const r = userGame.match.swapPositions(userSideKey, panelSelected, b.dataset.swap);
-        if (r.ok) { panelSelected = null; syncAll(); }
+    function onPitchClick(slot) {
+      if (!slot.player) return;
+      const id = slot.player.id;
+      if (manageSel === null) { manageSel = id; }
+      else if (manageSel === id) { manageSel = null; }        // clicar de novo desmarca
+      else {
+        // trocar posições dos dois jogadores em campo
+        const r = userGame.match.swapPositions(userSideKey, manageSel, id);
+        if (!r.ok) UI().toast(r.reason);
+        manageSel = null;
+      }
+      renderManagePitch();
+      renderManageSide();
+    }
+
+    function renderManageSide() {
+      const side = manageOverlay.querySelector("#m-side");
+      const subsLeft = 5 - (userTeam.subsUsed || 0);
+      const bench = userTeam.bench.filter(b => !b.injuryWeeks);
+      const selPlayer = manageSel ? userTeam.lineup.map(s => s.player).find(p => p && p.id === manageSel) : null;
+
+      let html = "";
+      if (selPlayer) {
+        html += "<div class='card mb0' style='padding:12px'>" +
+          "<h3 style='margin:0 0 6px'>" + esc(selPlayer.name) + " " + UI().ratingBadge(selPlayer.rating) + "</h3>" +
+          "<p class='muted' style='font-size:.8rem;margin-bottom:8px'>Energia " + Math.round(selPlayer.energy) + "% · clique em outro jogador do campo para trocar de posição.</p>" +
+          "<div class='muted' style='font-size:.78rem;margin-bottom:4px'>⬆ Substituir por (banco):</div>";
+        if (subsLeft <= 0) html += "<p class='muted' style='font-size:.8rem'>Sem substituições restantes.</p>";
+        else if (!bench.length) html += "<p class='muted' style='font-size:.8rem'>Banco vazio.</p>";
+        else html += bench.map(b =>
+          '<button class="btn small bench-btn" data-subin="' + b.id + '">' + UI().posBadge(b.pos) + " " + esc(b.name.split(" ").slice(-1)[0]) + " " + Math.round(b.rating) + "</button>").join("");
+        html += "</div>";
+      } else {
+        html = "<div class='card mb0' style='padding:12px'><h3 style='margin:0 0 6px'>Banco de reservas</h3>" +
+          (bench.length ? '<table class="data"><tbody>' + bench.map(b =>
+            "<tr><td>" + UI().posBadge(b.pos) + "</td><td>" + esc(b.name) + "</td><td class='num'>" + UI().ratingBadge(b.rating) + "</td><td>" + Math.round(b.energy) + "%</td></tr>").join("") + "</tbody></table>"
+            : "<p class='muted'>Banco vazio.</p>") +
+          "<p class='muted' style='font-size:.78rem;margin-top:8px'>Selecione um jogador em campo para substituí-lo ou trocá-lo de posição.</p></div>";
+      }
+      side.innerHTML = html;
+      side.querySelectorAll("[data-subin]").forEach(b => b.addEventListener("click", () => {
+        const r = userGame.match.substitute(userSideKey, manageSel, b.dataset.subin);
+        if (r.ok) { window.TF.sounds.play("sub"); manageSel = null; renderManagePitch(); renderManageSide(); updateManageClock(); updateGrid(); }
         else UI().toast(r.reason);
       }));
     }
@@ -187,9 +267,11 @@
           '<button class="btn" id="c-ratings">Notas</button>';
       } else if (userHalf && !timer) {
         html = '<button class="btn primary" id="c-2half">▶ Iniciar 2º tempo</button>' +
+          '<button class="btn" id="c-manage">⚙️ Gerir meu time</button>' +
           '<button class="btn" id="c-skip">⏩ Simular restante</button>';
       } else {
         html = (timer ? '<button class="btn" id="c-pause">⏸ Pausar</button>' : '<button class="btn primary" id="c-resume">▶ Continuar</button>') +
+          '<button class="btn" id="c-manage">⚙️ Gerir meu time</button>' +
           '<select id="c-speed">' +
             '<option value="220"' + (speed === 220 ? " selected" : "") + ">Normal</option>" +
             '<option value="110"' + (speed === 110 ? " selected" : "") + ">Rápida</option>" +
@@ -201,6 +283,7 @@
       bind("#c-skip", skipAll);
       bind("#c-pause", pause);
       bind("#c-resume", play);
+      bind("#c-manage", openManagement);
       bind("#c-2half", () => { userGame.match.resumeSecondHalf(); window.TF.sounds.play("kickoff"); play(); });
       bind("#c-done", finishAndContinue);
       bind("#c-ratings", ratingsModal);
@@ -215,15 +298,8 @@
 
     function startTimer() { timer = setInterval(tick, speed); }
     function stopTimer() { if (timer) { clearInterval(timer); timer = null; } }
-    function play() { stopTimer(); startTimer(); renderControls(); }
+    function play() { if (manageOverlay) return; stopTimer(); startTimer(); renderControls(); }
     function pause() { stopTimer(); renderControls(); }
-
-    function syncAll() {
-      playSounds();
-      updateGrid();
-      updateDetail();
-      buildPanel();
-    }
 
     function tick() {
       let userHitHalftime = false;
@@ -238,23 +314,14 @@
       updateDetail();
 
       // decisões do técnico: pênalti e lesão pausam o jogo
-      if (userGame.match.pendingPenalty) {
-        pause();
-        penaltyModal();
-        return;
-      }
-      if (userGame.match.pendingInjury) {
-        pause();
-        injuryModal();
-        return;
-      }
+      if (userGame.match.pendingPenalty) { pause(); penaltyModal(); return; }
+      if (userGame.match.pendingInjury) { pause(); injuryModal(); return; }
 
       const allDone = games.every(g => g.match.finished);
       if (userHitHalftime || allDone) {
         stopTimer();
         if (allDone) window.TF.sounds.stopAmbience();
         renderControls();
-        buildPanel();
       }
     }
 
@@ -275,7 +342,6 @@
       updateGrid();
       updateDetail();
       renderControls();
-      buildPanel();
     }
 
     // ---------- decisões na hora ----------
@@ -297,7 +363,7 @@
           ov.querySelectorAll("[data-taker]").forEach(tr => tr.addEventListener("click", () => {
             userGame.match.resolvePenalty(tr.dataset.taker);
             ov.remove();
-            syncAll();
+            playSounds(); updateGrid(); updateDetail();
             play();
           }));
         });
@@ -321,13 +387,13 @@
             userGame.match.resolveInjury(tr.dataset.in);
             window.TF.sounds.play("sub");
             ov.remove();
-            syncAll();
+            playSounds(); updateGrid(); updateDetail();
             play();
           }));
           ov.querySelector("[data-none]").addEventListener("click", () => {
             userGame.match.resolveInjury(null);
             ov.remove();
-            syncAll();
+            playSounds(); updateGrid(); updateDetail();
             play();
           });
         });
@@ -363,7 +429,6 @@
     // a partida começa imediatamente ao entrar na tela
     buildGrid();
     buildDetail();
-    buildPanel();
     renderControls();
     updateGrid();
     window.TF.sounds.startAmbience();
