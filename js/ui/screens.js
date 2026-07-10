@@ -38,6 +38,7 @@
         "<p>Manager de futebol — temporada 2026 com elencos reais de 6 países</p>" +
         (hasSave ? '<button class="btn primary" id="btn-continue">Continuar carreira</button>' : "") +
         '<button class="btn' + (hasSave ? "" : " primary") + '" id="btn-new">Nova carreira</button>' +
+        '<button class="btn" id="btn-online" style="border-color:var(--accent)">🌐 Jogar online com amigos</button>' +
       "</div>";
     el.querySelector("#btn-theme-home").addEventListener("click", () => { UI().toggleTheme(); S.home(el); });
     const bc = el.querySelector("#btn-continue");
@@ -46,6 +47,7 @@
       if (r.ok) UI().goto("squad"); else UI().toast(r.reason);
     });
     el.querySelector("#btn-new").addEventListener("click", () => UI().goto("newCareer"));
+    el.querySelector("#btn-online").addEventListener("click", () => { window.location.href = "online.html"; });
   };
 
   // ---------------- NOVA CARREIRA ----------------
