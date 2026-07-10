@@ -1,0 +1,15 @@
+ARMAZENAMENTO LOCAL DE ESCUDOS
+==============================
+
+Os arquivos de escudo baixados pelo atualizador ficam permanentemente nesta pasta.
+O jogo abre as imagens diretamente daqui e não consulta sites enquanto você joga.
+
+Ao executar ATUALIZAR-BASE-2026.bat novamente:
+- escudos já existentes e válidos são reutilizados;
+- somente escudos ausentes são baixados;
+- arquivos anteriores não são apagados.
+
+Para levar os escudos a uma versão futura do jogo, copie esta pasta inteira para o
+mesmo caminho da nova versão: assets\crests.
+
+O arquivo manifest.json é criado pelo atualizador e registra os escudos disponíveis.

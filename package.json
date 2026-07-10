@@ -1,0 +1,13 @@
+{
+  "name": "tecnico26",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Técnico 26 — manager de futebol com modo online em salas",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check js/core/room-game.js && node --check js/ui/online.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

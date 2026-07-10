@@ -1,0 +1,1 @@
+Efeitos sonoros locais da partida. O jogo não precisa baixar sons da internet.

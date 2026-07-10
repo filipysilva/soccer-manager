@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: tecnico26
+    runtime: node
+    plan: free
+    buildCommand: "echo sem build"
+    startCommand: "node server.js"
+    healthCheckPath: /api/health
+    autoDeploy: true
