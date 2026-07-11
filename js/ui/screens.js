@@ -669,7 +669,15 @@
           '<td><button class="btn small" data-offer="' + p.id + '">Proposta</button></td></tr>').join("") +
         "</tbody></table></div>";
     } else if (tab === "recebidas") {
-      inner = '<div class="card mb0">' +
+      const bids = st.pendingBids || [];
+      inner = '<div class="card">' +
+        "<h3 style='margin-top:0'>Propostas enviadas (aguardando resposta)</h3>" +
+        (bids.length ? '<table class="data"><tbody>' + bids.map(b => {
+          const owner = world.clubs[b.ownerClubId];
+          return "<tr><td><b>" + esc(b.name) + "</b></td><td class='muted'>" + esc(owner ? owner.name : "-") + "</td><td class='num'>" + money(b.value) + "</td><td class='muted'>responde na próxima rodada</td></tr>";
+        }).join("") + "</tbody></table>" : "<p class='muted'>Nenhuma proposta enviada. As respostas dos clubes chegam sempre na rodada seguinte.</p>") +
+        "</div>" +
+        '<div class="card mb0"><h3 style="margin-top:0">Propostas recebidas pelos seus jogadores</h3>' +
         (st.aiOffers.length ? '<table class="data"><thead><tr><th>Jogador</th><th>Clube interessado</th><th class="num">Oferta</th><th></th></tr></thead><tbody>' +
           st.aiOffers.map((o, i) => {
             const p = club.players.find(x => x.id === o.playerId);
@@ -679,7 +687,7 @@
               "<td class='num'><b>" + money(o.value) + "</b></td>" +
               '<td><button class="btn small primary" data-acc="' + i + '">Aceitar</button> <button class="btn small danger" data-rej="' + i + '">Recusar</button></td></tr>';
           }).join("") + "</tbody></table>"
-          : "<p class='muted'>Nenhuma proposta recebida no momento. Coloque jogadores à venda na tela Elenco para atrair interessados.</p>") +
+          : "<p class='muted'>Nenhuma proposta recebida no momento.</p>") +
         "</div>";
     } else {
       // livres
@@ -701,7 +709,7 @@
       (win.open ? "" : " Jogadores livres podem ser contratados a qualquer momento.") + "</p>" +
       '<div class="row" style="margin-bottom:12px">' +
         '<button class="btn' + (tab === "buscar" ? " primary" : "") + '" data-tab="buscar">Buscar jogadores</button>' +
-        '<button class="btn' + (tab === "recebidas" ? " primary" : "") + '" data-tab="recebidas">Propostas recebidas' + (st.aiOffers.length ? " (" + st.aiOffers.length + ")" : "") + "</button>" +
+        '<button class="btn' + (tab === "recebidas" ? " primary" : "") + '" data-tab="recebidas">Propostas' + ((st.aiOffers.length + (st.pendingBids ? st.pendingBids.length : 0)) ? " (" + (st.aiOffers.length + (st.pendingBids ? st.pendingBids.length : 0)) + ")" : "") + "</button>" +
         '<button class="btn' + (tab === "livres" ? " primary" : "") + '" data-tab="livres">Sem contrato</button>' +
         '<span class="spacer" style="flex:1"></span><span class="muted">Caixa: <b>' + money(club.money) + "</b></span>" +
       "</div>" + inner;
@@ -760,12 +768,10 @@
           const val = price ? (parseInt(ov.querySelector("#o-val").value, 10) || 0) : 0;
           const w = parseInt(ov.querySelector("#o-wage").value, 10) || 0;
           const y = parseInt(ov.querySelector("#o-years").value, 10);
-          const r = T().makeOffer(world, club, p, val, w, y);
+          const r = G().submitBid(p.id, val, w, y);
           ov.remove();
           if (r.ok) {
-            UI().toast(p.name + " contratado por " + money(val) + "!");
-            G().addNews("Contratação", p.name + " chega ao " + club.name + " por " + money(val) + ".", "transfer");
-            G().autoLineup();
+            UI().toast("Proposta enviada. O clube responde na próxima rodada.");
             UI().render();
           } else {
             UI().toast(r.reason);

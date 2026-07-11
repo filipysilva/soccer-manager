@@ -886,7 +886,16 @@
             '<td><button class="btn small" data-offer="' + p.id + '">Proposta</button></td></tr>';
         }).join("") + "</tbody></table></div>";
     } else {
-      inner = '<div class="card mb0">' +
+      const sent = st.personal.sentBids || [];
+      inner =
+        '<div class="card">' +
+        "<h3 style='margin-top:0'>Propostas enviadas (aguardando resposta)</h3>" +
+        (sent.length ? '<table class="data"><tbody>' + sent.map(b => {
+          const owner = clubById(b.ownerClubId);
+          return "<tr><td><b>" + esc(b.name) + "</b></td><td class='muted'>" + esc(owner ? owner.name : "-") + "</td><td class='num'>" + money(b.value) + "</td><td class='muted'>responde na próxima rodada</td></tr>";
+        }).join("") + "</tbody></table>" : "<p class='muted'>Nenhuma proposta a clubes da IA aguardando. As respostas chegam na rodada seguinte.</p>") +
+        "</div>" +
+        '<div class="card mb0">' +
         "<h3 style='margin-top:0'>Propostas de outros técnicos</h3>" +
         (humanOffers.length ? '<table class="data"><tbody>' + humanOffers.map((o, i) => {
           const info = playerById(o.playerId);

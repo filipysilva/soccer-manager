@@ -18,6 +18,7 @@
     training: "auto",
     news: [],
     aiOffers: [],         // propostas da IA por jogadores do usuário
+    pendingBids: [],      // propostas do usuário aguardando resposta do clube (próxima rodada)
     setPieces: null,      // { captain, freeKick, cornerLeft, cornerRight }
     week: 1,
     pendingLiveRound: null,
@@ -373,6 +374,9 @@
       if (p.contractYears <= 0) p.moral = U.clamp(p.moral - 3, 5, 100);
     }
 
+    // respostas das propostas enviadas pelo usuário (chegam neste dia de transferência)
+    resolveBids();
+
     // propostas da IA (apenas com a janela de transferências aberta)
     const offers = transferWindowInfo().open ? T().aiOffersForUser(state.world, club, U.RNG.next.bind(U.RNG)) : [];
     for (const o of offers) {
@@ -388,6 +392,47 @@
       if (p.contractYears === 0 && !p.warnedContract) {
         p.warnedContract = true;
         addNews("Contrato expirado", p.name + " está sem contrato e não pode ser escalado. Renove ou libere o jogador.", "warning");
+      }
+    }
+  }
+
+  /* Registra uma proposta do usuário a um clube da IA. A resposta vem na próxima rodada. */
+  function submitBid(targetId, value, wage, years) {
+    const player = state.world.players[targetId];
+    if (!player) return { ok: false, reason: "Jogador não encontrado." };
+    const club = userClub();
+    if (player.clubId === club.id) return { ok: false, reason: "Ele já é do seu clube." };
+    if (player.contractYears > 0 && !transferWindowInfo().open) return { ok: false, reason: transferWindowInfo().message };
+    if (club.money < value) return { ok: false, reason: "Seu clube não tem esse dinheiro em caixa." };
+    // substitui proposta anterior pelo mesmo jogador
+    state.pendingBids = state.pendingBids.filter(b => b.targetId !== targetId);
+    state.pendingBids.push({ targetId, ownerClubId: player.clubId, value: value | 0, wage: wage | 0, years: years === 1 ? 1 : 2, name: player.name });
+    const owner = state.world.clubs[player.clubId];
+    addNews("Proposta enviada", "Você ofereceu " + U.formatMoney(value) + " por " + player.name + (owner ? " (" + owner.name + ")" : "") + ". O clube responde na próxima rodada.", "transfer");
+    return { ok: true, pending: true };
+  }
+
+  /* Resolve as propostas pendentes do usuário no dia de transferência (weeklyTick). */
+  function resolveBids() {
+    if (!state.pendingBids.length) return;
+    const club = userClub();
+    const bids = state.pendingBids;
+    state.pendingBids = [];
+    for (const b of bids) {
+      const player = state.world.players[b.targetId];
+      if (!player) { addNews("Negócio caiu", b.name + " não está mais disponível.", "transfer"); continue; }
+      // jogador saiu do clube alvo desde a proposta
+      if (player.clubId !== b.ownerClubId && player.contractYears > 0) { addNews("Negócio caiu", b.name + " foi negociado por outro clube.", "transfer"); continue; }
+      if (player.clubId === club.id) continue;
+      if (player.contractYears > 0 && !transferWindowInfo().open) { addNews("Janela fechada", "A proposta por " + b.name + " expirou com o fim da janela.", "transfer"); continue; }
+      if (club.money < b.value) { addNews("Negócio caiu", "Caixa insuficiente para concluir a compra de " + b.name + ".", "warning"); continue; }
+      const ev = T().evaluateOffer(state.world, club, player, b.value, b.wage);
+      if (ev.accept) {
+        T().transferPlayer(state.world, player, club, b.value, b.wage, b.years);
+        autoLineup();
+        addNews("Contratação!", player.name + " acertou com o " + club.name + " por " + U.formatMoney(b.value) + ".", "transfer");
+      } else {
+        addNews("Proposta recusada", ev.reason || (b.name + " recusou a proposta."), "transfer");
       }
     }
   }
@@ -541,7 +586,7 @@
       world: { ...state.world, players: undefined },
       season: state.season, coach: state.coach, tactics: state.tactics,
       userSquad: state.userSquad, training: state.training, news: state.news,
-      aiOffers: state.aiOffers, week: state.week, setPieces: state.setPieces
+      aiOffers: state.aiOffers, pendingBids: state.pendingBids, week: state.week, setPieces: state.setPieces
     };
     try {
       localStorage.setItem(SAVE_KEY + (slot || 1), JSON.stringify(data));
@@ -567,6 +612,7 @@
     state.season = data.season; state.coach = data.coach; state.tactics = data.tactics;
     state.userSquad = data.userSquad; state.training = data.training; state.news = data.news || [];
     state.aiOffers = data.aiOffers || []; state.week = data.week || 1;
+    state.pendingBids = data.pendingBids || [];
     state.setPieces = data.setPieces || null;
     state.pendingLiveRound = null;
     state.started = true;
@@ -578,6 +624,6 @@
 
   window.TF.game = {
     state, newCareer, userClub, userTeam, aiTeam, autoLineup, autoAssignSetPieces, nextSlot, completeLiveRound,
-    processSlot, endOfSeason, save, load, hasSave, addNews, recomputeRating, transferWindowInfo
+    processSlot, endOfSeason, save, load, hasSave, addNews, recomputeRating, transferWindowInfo, submitBid
   };
 })();

@@ -33,26 +33,34 @@
     return Math.round(w / 100) * 100;
   }
 
-  /* Tenta comprar: retorna resultado da negociação com o clube da IA. */
-  function makeOffer(world, buyerClub, player, offerValue, wageOffer, years) {
+  /* Decisão do clube/jogador sobre uma proposta, SEM efetivar a transferência.
+     Retorna { accept, counter?, wageCounter?, reason }. */
+  function evaluateOffer(world, buyerClub, player, offerValue, wageOffer) {
     const owner = world.clubs[player.clubId];
-    if (!owner || owner.id === buyerClub.id) return { ok: false, reason: "Negociação inválida." };
-    const price = askingPrice(player, owner);
-    if (buyerClub.money < offerValue) return { ok: false, reason: "Seu clube não tem esse dinheiro em caixa." };
-
+    if (owner && owner.id === buyerClub.id) return { accept: false, reason: "Negociação inválida." };
     if (player.contractYears > 0) {
+      if (!owner) return { accept: false, reason: "Clube não encontrado." };
+      const price = askingPrice(player, owner);
       const need = owner.players.filter(p => p.pos === player.pos && p.contractYears > 0).length;
-      let willing = offerValue >= price * (need <= 2 ? 1.25 : 1);
+      const willing = offerValue >= price * (need <= 2 ? 1.25 : 1);
       if (!willing) {
         const counter = Math.round(price * (need <= 2 ? 1.3 : 1.12));
-        return { ok: false, counter, reason: owner.name + " recusou. Pede " + U.formatMoney(counter) + "." };
+        return { accept: false, counter, reason: (owner.name) + " recusou. Pede " + U.formatMoney(counter) + "." };
       }
     }
     const demand = wageDemand(player, buyerClub);
     if (wageOffer < demand * 0.92) {
-      return { ok: false, wageCounter: demand, reason: player.name + " recusou o salário. Pede " + U.formatMoney(demand) + " por jogo." };
+      return { accept: false, wageCounter: demand, reason: player.name + " recusou o salário. Pede " + U.formatMoney(demand) + " por jogo." };
     }
-    // negócio fechado
+    return { accept: true };
+  }
+
+  /* Compra imediata (usada internamente / IA). Para o jogador humano, a resposta
+     é diferida para o próximo dia de transferência (ver submitBid/resolveBids no game). */
+  function makeOffer(world, buyerClub, player, offerValue, wageOffer, years) {
+    if (buyerClub.money < offerValue) return { ok: false, reason: "Seu clube não tem esse dinheiro em caixa." };
+    const ev = evaluateOffer(world, buyerClub, player, offerValue, wageOffer);
+    if (!ev.accept) return { ok: false, counter: ev.counter, wageCounter: ev.wageCounter, reason: ev.reason };
     transferPlayer(world, player, buyerClub, offerValue, wageOffer, years);
     return { ok: true, price: offerValue };
   }
@@ -134,5 +142,5 @@
     return { ok: true };
   }
 
-  window.TF.transfers = { askingPrice, fairValue, wageDemand, makeOffer, transferPlayer, renewContract, aiOffersForUser, acceptAiOffer };
+  window.TF.transfers = { askingPrice, fairValue, wageDemand, evaluateOffer, makeOffer, transferPlayer, renewContract, aiOffersForUser, acceptAiOffer };
 })();

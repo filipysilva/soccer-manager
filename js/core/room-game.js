@@ -330,6 +330,7 @@
       }
       for (const h of Object.values(rg.humans)) {
         applyTraining(h);
+        resolveBidsFor(h); // respostas das propostas aos clubes da IA
         for (const p of clubOf(h).players) {
           if (p.contractYears === 0 && !p.warnedContract) {
             p.warnedContract = true;
@@ -402,15 +403,42 @@
       if (buyer.money < value) return { ok: false, reason: "Caixa insuficiente." };
       const ownerHuman = humanByClub(target.clubId);
       if (ownerHuman && ownerHuman.id !== playerId) {
-        // outro técnico decide
+        // outro técnico decide (a qualquer momento)
         ownerHuman.humanOffers.push({ fromPlayerId: playerId, fromName: h.name, fromClubId: h.clubId, playerId: targetPlayerId, value, wage, years });
         if (ownerHuman.humanOffers.length > 10) ownerHuman.humanOffers.shift();
         addNews(ownerHuman, "Proposta de " + h.name, buyer.name + " ofereceu " + U().formatMoney(value) + " por " + target.name + ". Decida em Transferências.", "transfer");
         return { ok: true, pending: true, reason: "Proposta enviada. O técnico do " + world.clubs[target.clubId].name + " vai decidir." };
       }
-      const r = T().makeOffer(world, buyer, target, value, wage, years);
-      if (r.ok) addNews(h, "Contratação", target.name + " chega ao " + buyer.name + " por " + U().formatMoney(value) + ".", "transfer");
-      return r;
+      // clube da IA: a resposta vem na próxima rodada
+      h.sentBids = (h.sentBids || []).filter(b => b.targetId !== targetPlayerId);
+      h.sentBids.push({ targetId: targetPlayerId, ownerClubId: target.clubId, value: value | 0, wage: wage | 0, years: years === 1 ? 1 : 2, name: target.name });
+      addNews(h, "Proposta enviada", buyer.name + " ofereceu " + U().formatMoney(value) + " por " + target.name + ". O clube responde na próxima rodada.", "transfer");
+      return { ok: true, pending: true, reason: "Proposta enviada. O clube responde na próxima rodada." };
+    }
+
+    /* Resolve as propostas de um técnico aos clubes da IA (chamado no weeklyTick). */
+    function resolveBidsFor(h) {
+      if (!h.sentBids || !h.sentBids.length) return;
+      const club = clubOf(h);
+      const bids = h.sentBids;
+      h.sentBids = [];
+      for (const b of bids) {
+        const player = world.players[b.targetId];
+        if (!player) { addNews(h, "Negócio caiu", b.name + " não está mais disponível.", "transfer"); continue; }
+        if (player.clubId !== b.ownerClubId && player.contractYears > 0) { addNews(h, "Negócio caiu", b.name + " foi negociado por outro clube.", "transfer"); continue; }
+        if (player.clubId === club.id) continue;
+        if (humanByClub(player.clubId)) { addNews(h, "Negócio caiu", b.name + " agora é de um clube com técnico.", "transfer"); continue; }
+        if (player.contractYears > 0 && !transferWindowInfo().open) { addNews(h, "Janela fechada", "A proposta por " + b.name + " expirou.", "transfer"); continue; }
+        if (club.money < b.value) { addNews(h, "Negócio caiu", "Caixa insuficiente para " + b.name + ".", "warning"); continue; }
+        const ev = T().evaluateOffer(world, club, player, b.value, b.wage);
+        if (ev.accept) {
+          T().transferPlayer(world, player, club, b.value, b.wage, b.years);
+          autoLineupFor(h);
+          addNews(h, "Contratação!", player.name + " acertou com o " + club.name + " por " + U().formatMoney(b.value) + ".", "transfer");
+        } else {
+          addNews(h, "Proposta recusada", ev.reason || (b.name + " recusou."), "transfer");
+        }
+      }
     }
 
     function respondHumanOffer(playerId, index, accept) {
@@ -602,6 +630,7 @@
       return {
         clubId: h.clubId, tactics: h.tactics, squad: h.squad, training: h.training,
         setPieces: h.setPieces, news: h.news, offers: h.offers, humanOffers: h.humanOffers,
+        sentBids: h.sentBids || [],
         money: clubOf(h).money
       };
     }
