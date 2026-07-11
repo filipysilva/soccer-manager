@@ -8,14 +8,18 @@
     return club.division === "A" ? 40 : 20;
   }
 
+  /* Caixa inicial realista, bem espalhado por força (grandes têm bem mais que pequenos). */
   function initialMoney(club) {
-    const base = club.division === "A" ? 20e6 : 5e6;
-    return Math.round(base * (0.6 + club.rating / 100));
+    const r = club.rating;
+    if (club.division === "A") return Math.round(3e6 + Math.pow(Math.max(0, r - 55) / 35, 2.2) * 42e6);
+    return Math.round(1e6 + Math.pow(Math.max(0, r - 50) / 25, 2.2) * 9e6);
   }
 
+  /* Patrocínio anual (creditado no início da temporada). */
   function seasonSponsorship(club) {
-    const base = club.division === "A" ? 12e6 : 4e6;
-    return Math.round(base * (0.5 + club.rating / 90));
+    const r = club.rating;
+    if (club.division === "A") return Math.round(2e6 + Math.pow(Math.max(0, r - 55) / 35, 2) * 16e6);
+    return Math.round(1e6 + Math.pow(Math.max(0, r - 50) / 25, 2) * 5e6);
   }
 
   /* Público do jogo: depende da moral da torcida, força do adversário, divisão e preço. */

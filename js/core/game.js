@@ -421,7 +421,7 @@
     else if (["MC", "MEI"].includes(p.pos)) r = s.playmaking * 0.3 + s.pass * 0.25 + s.technique * 0.2 + s.speed * 0.1 + s.finishing * 0.1 + s.tackle * 0.05;
     else r = s.finishing * 0.4 + s.speed * 0.25 + s.technique * 0.2 + s.playmaking * 0.1 + s.pass * 0.05;
     p.rating = U.clamp(Math.round(r), 1, 99);
-    p.value = window.TF.world.valueFor(p.rating, p.age);
+    p.value = window.TF.world.computeValue(p);
   }
 
   // ---------- fim de temporada ----------
@@ -499,6 +499,8 @@
           for (const k of Object.keys(p.skills)) p.skills[k] = Math.round(Math.max(1, p.skills[k] - decline * (0.6 + U.RNG.next() * 0.7)) * 100) / 100;
           recomputeRating(p);
         }
+        p.value = window.TF.world.computeValue(p); // valor acompanha a idade
+        p.wage = window.TF.world.wageFor(p.rating, p.age);
         p.contractYears = Math.max(0, p.contractYears - 1);
         if (!isUser) {
           // IA renova automaticamente a maioria

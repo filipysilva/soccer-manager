@@ -4,14 +4,15 @@
   const U = window.TF.util;
   const W = () => window.TF.world;
 
-  /* Valor de mercado justo do jogador no contexto do clube dono. */
+  /* Valor de mercado justo do jogador no contexto do clube dono.
+     Multiplicadores moderados sobre o valor real de mercado. */
   function fairValue(player, ownerClub) {
     let v = player.value * 1e6;
     if (player.contractYears <= 0) return 0; // livre
     const starters = ownerClub.players.slice().sort((a, b) => b.rating - a.rating).slice(0, 13);
-    if (starters.some(p => p.id === player.id)) v *= 1.35;      // titular custa mais
-    if (player.age <= 22 && player.potential > player.rating + 5) v *= 1.3;
-    v *= 0.9 + player.contractYears * 0.12;
+    if (starters.some(p => p.id === player.id)) v *= 1.18;      // titular custa um pouco mais
+    if (player.age <= 22 && player.potential > player.rating + 5) v *= 1.15; // promessa
+    v *= 0.92 + player.contractYears * 0.06;                    // contrato longo valoriza pouco
     return Math.round(v);
   }
 

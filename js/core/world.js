@@ -94,10 +94,38 @@
     });
   }
 
+  // fator de idade sobre o valor de mercado (prime 24-27 = 1.0)
+  function ageValueFactor(age) {
+    if (age <= 19) return 1.3;
+    if (age <= 21) return 1.25;
+    if (age <= 23) return 1.15;
+    if (age <= 27) return 1.0;
+    if (age === 28) return 0.9;
+    if (age === 29) return 0.78;
+    if (age === 30) return 0.62;
+    if (age === 31) return 0.5;
+    if (age === 32) return 0.38;
+    if (age === 33) return 0.27;
+    if (age === 34) return 0.18;
+    if (age === 35) return 0.12;
+    return 0.07;
+  }
+
+  /* Valor de mercado (milhões de €) calibrado por dados reais (Transfermarkt).
+     Ex.: 90→~110, 85→~49, 80→~22, 75→~10, 70→~4.4, 65→~2, 60→~0.9. */
   function valueFor(rating, age) {
-    let v = Math.pow(rating / 20, 4.1); // em milhões
-    if (age <= 23) v *= 1.35; else if (age >= 31) v *= 0.55; else if (age >= 29) v *= 0.8;
-    return Math.max(0.05, Math.round(v * 100) / 100);
+    const v = Math.exp(0.161 * rating - 9.79) * ageValueFactor(age);
+    return Math.max(0.03, Math.round(v * 100) / 100);
+  }
+
+  /* Recalcula o valor preservando a âncora real do jogador (mv0 no rating/idade de origem),
+     escalando só pela mudança relativa de força e idade. Mantém os valores reais da base. */
+  function computeValue(p) {
+    if (p._mv0 == null || p._mvR == null || p._mvA == null) return valueFor(p.rating, p.age);
+    const ref = valueFor(p._mvR, p._mvA);
+    const now = valueFor(p.rating, p.age);
+    const v = p._mv0 * (ref > 0 ? now / ref : 1);
+    return Math.max(0.03, Math.round(v * 100) / 100);
   }
 
   function wageFor(rating, age) {
@@ -115,18 +143,22 @@
 
   function normalizePlayer(raw) {
     const rating = U.clamp(Math.round(raw.rating || 50), 1, 99);
+    const age = raw.age || 25;
     const skills = raw.skills || skillsForPosition(raw.position, rating, U.RNG.next.bind(U.RNG));
+    // valor de mercado real (da base) vira a âncora; se não houver, usa a fórmula
+    const value = raw.value != null ? raw.value : valueFor(rating, age);
     return {
       id: String(raw.id),
       name: raw.name,
       pos: raw.position,
-      age: raw.age || 25,
+      age,
       nation: raw.nation || "BRA",
       side: raw.side === "E" || raw.side === "D" || raw.side === "C" ? raw.side : (raw.foot === "left" ? "E" : "D"),
       foot: raw.foot === "left" ? "E" : raw.foot === "both" ? "A" : "D",
       rating,
       potential: U.clamp(Math.round(raw.potential || rating), rating, 99),
-      value: raw.value != null ? raw.value : valueFor(rating, raw.age || 25),
+      value,
+      _mv0: value, _mvR: rating, _mvA: age, // âncora do valor real
       wage: wageFor(rating, raw.age || 25),
       contractYears: raw.contractYears != null ? raw.contractYears : contractYearsFromDb(raw.contractExpiration),
       traits: (raw.traits || []).slice(0, 2),
@@ -242,5 +274,5 @@
     return world;
   }
 
-  window.TF.world = { buildWorld, POSITIONS, POS_LABEL, valueFor, wageFor, generatePlayer, normalizePlayer };
+  window.TF.world = { buildWorld, POSITIONS, POS_LABEL, valueFor, computeValue, ageValueFactor, wageFor, generatePlayer, normalizePlayer };
 })();
