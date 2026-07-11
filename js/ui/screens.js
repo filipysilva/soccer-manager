@@ -295,8 +295,10 @@
         div.style.left = x + "%";
         div.style.top = (100 - y) + "%";
         const isCap = p && st.setPieces && st.setPieces.captain === p.id;
+        const eColor = p ? (p.energy > 60 ? "var(--green)" : p.energy > 35 ? "var(--yellow)" : "var(--red)") : "";
         div.innerHTML =
           '<div class="jersey">' + (p ? Math.round(p.rating) : pos) + "</div>" +
+          (p ? '<div class="shirt-energy"><i style="width:' + Math.round(p.energy) + "%;background:" + eColor + '"></i></div>' : "") +
           '<div class="pname' + (p && p.pos !== pos ? " improv" : "") + '">' +
           (p ? (isCap ? "© " : "") + esc(p.name.split(" ").slice(-1)[0]) + (unavailable ? " ⚠" : "") : "vazio") + "</div>";
         div.addEventListener("click", () => pickPlayerForSlot(i, pos));
@@ -327,13 +329,25 @@
 
     function drawBench() {
       const usedIds = new Set(st.userSquad.starters.filter(Boolean));
+      const benchSet = new Set(st.userSquad.bench);
       const bench = st.userSquad.bench.map(id => byId[id]).filter(Boolean);
+      // excedentes: no elenco, mas não são titulares nem estão no banco (fora da lista do jogo)
+      const outside = club.players
+        .filter(p => !usedIds.has(p.id) && !benchSet.has(p.id) && p.contractYears > 0)
+        .sort((a, b) => b.rating - a.rating);
+      const energyCell = p => "<td><span class='bar' style='width:44px'><i style='width:" + Math.round(p.energy) + "%;background:" + (p.energy > 60 ? "var(--green)" : p.energy > 35 ? "var(--yellow)" : "var(--red)") + "'></i></span></td>";
       el.querySelector("#bench-card").innerHTML =
         "<h3 style='margin-top:0'>Banco de reservas (" + bench.length + "/7)</h3>" +
-        '<table class="data"><tbody>' +
-        bench.map(p => "<tr><td>" + UI().posBadge(p.pos) + "</td><td>" + esc(p.name) + "</td><td class='num'>" + UI().ratingBadge(p.rating) + "</td><td>" + playerStatusTags(p) + "</td></tr>").join("") +
+        '<table class="data"><thead><tr><th>Pos</th><th>Nome</th><th class="num">Força</th><th>Energia</th><th>Status</th></tr></thead><tbody>' +
+        bench.map(p => "<tr><td>" + UI().posBadge(p.pos) + "</td><td>" + esc(p.name) + "</td><td class='num'>" + UI().ratingBadge(p.rating) + "</td>" + energyCell(p) + "<td>" + playerStatusTags(p) + "</td></tr>").join("") +
         "</tbody></table>" +
-        "<h3>Dica</h3><p class='muted' style='font-size:.85rem'>Clique em uma camisa para trocar o jogador da posição. Nomes em amarelo indicam jogadores improvisados — eles rendem menos fora da posição de origem.</p>";
+        (outside.length ?
+          "<h3>Fora da lista (" + outside.length + ")</h3>" +
+          "<p class='muted' style='font-size:.8rem;margin-bottom:6px'>Não entram nesta partida (limite de 18 relacionados), mas treinam e evoluem normalmente.</p>" +
+          '<table class="data"><tbody>' +
+          outside.map(p => "<tr style='opacity:.75'><td>" + UI().posBadge(p.pos) + "</td><td>" + esc(p.name) + "</td><td class='num'>" + UI().ratingBadge(p.rating) + "</td>" + energyCell(p) + "<td>" + playerStatusTags(p) + "</td></tr>").join("") +
+          "</tbody></table>" : "") +
+        "<h3>Dica</h3><p class='muted' style='font-size:.85rem'>Clique em uma camisa para trocar o jogador da posição. Nomes em amarelo indicam jogadores improvisados — rendem menos fora da posição de origem.</p>";
     }
 
     function pickPlayerForSlot(slotIndex, pos) {

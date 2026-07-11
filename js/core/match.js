@@ -373,8 +373,9 @@
       const weeks = 1 + Math.floor(rng() * rng() * 8);
       victim.player.injuryWeeks = weeks;
       log(min, "injury", victim.player.name + " se machucou e não pode continuar (" + weeks + (weeks === 1 ? " semana" : " semanas") + " fora).", side);
-      // técnico humano escolhe o substituto na hora
-      if (opts.interactiveSide && opts.interactiveSide === side.key) {
+      // técnico humano só escolhe o substituto se houver troca disponível
+      const canSubstitute = (side.team.subsUsed || 0) < 5 && side.team.bench.some(p => !p.injuryWeeks);
+      if (opts.interactiveSide && opts.interactiveSide === side.key && canSubstitute) {
         const slotIndex = side.team.lineup.indexOf(victim);
         const outName = victim.player.name;
         victim.player = null;
@@ -617,5 +618,34 @@
     return "4-4-2";
   }
 
-  window.TF.match = { FORMATIONS, FORMATION_COORDS, createMatch, simulate, pickLineup, bestFormationFor, teamStrength, positionFactor };
+  /* Muda a formação de um time em campo mantendo os mesmos jogadores,
+     redistribuídos nos novos slots por melhor encaixe. Muta team.lineup no lugar. */
+  function reformTeam(team, formationName) {
+    const formation = FORMATIONS[formationName];
+    if (!formation) return { ok: false, reason: "Formação inválida." };
+    const players = team.lineup.map(s => s.player).filter(Boolean);
+    const newLineup = formation.map(pos => ({ slotPos: pos, player: null }));
+    const used = new Set();
+    // o goleiro vai para o slot de goleiro
+    const gkSlot = newLineup.find(s => s.slotPos === "GOL");
+    const gk = players.find(p => p.pos === "GOL");
+    if (gkSlot && gk) { gkSlot.player = gk; used.add(gk.id); }
+    // demais slots: melhor encaixe por posição
+    for (const slot of newLineup) {
+      if (slot.player) continue;
+      let best = null, bestVal = -1;
+      for (const p of players) {
+        if (used.has(p.id)) continue;
+        const v = p.rating * positionFactor(p, slot.slotPos);
+        if (v > bestVal) { bestVal = v; best = p; }
+      }
+      if (best) { slot.player = best; used.add(best.id); }
+    }
+    team.lineup.length = 0;
+    for (const s of newLineup) team.lineup.push(s);
+    team.formationName = formationName;
+    return { ok: true, formationName };
+  }
+
+  window.TF.match = { FORMATIONS, FORMATION_COORDS, createMatch, simulate, pickLineup, bestFormationFor, reformTeam, teamStrength, positionFactor };
 })();

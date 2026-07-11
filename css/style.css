@@ -254,6 +254,15 @@ tr.me td { background: var(--row-me) !important; }
 @media (max-width: 760px) { .manage-grid { grid-template-columns: 1fr; } }
 .manage-modal .pitch { max-width: 420px; margin: 0 auto; width: 100%; }
 .bench-btn { display: block; width: 100%; text-align: left; margin: 3px 0; }
+.bench-btn.sug { border-color: var(--green); box-shadow: inset 2px 0 0 var(--green); }
+.shirt .shirt-energy { width: 34px; height: 4px; border-radius: 2px; background: #0006; margin: 2px auto 0; overflow: hidden; }
+.shirt .shirt-energy > i { display: block; height: 100%; border-radius: 2px; }
+.set-pieces { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; margin-top: 8px; }
+.set-pieces .sp-item { display: flex; align-items: center; gap: 5px; font-size: .78rem; }
+.set-pieces .sp-item span { color: var(--muted); white-space: nowrap; }
+.set-pieces .sp-item select { flex: 1; min-width: 0; padding: 3px 6px; font-size: .78rem; }
+.sound-ctl { display: inline-flex; align-items: center; gap: 6px; }
+.sound-ctl input[type=range] { width: 84px; }
 
 /* ---------- partida ao vivo ---------- */
 .match-screen { max-width: 900px; margin: 0 auto; }

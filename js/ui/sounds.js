@@ -8,15 +8,40 @@
   let enabled = true;
   let ambience = null; // { gain, sources }
 
+  // preferências persistidas
+  let volume = 0.9;      // 0..1
+  let muted = false;
+  let minorEnabled = false; // sons de eventos menores desligados por padrão
+  let prefsLoaded = false;
+
+  // eventos "principais" sempre tocam; os demais só com minorEnabled
+  const MAIN = new Set(["goal", "penalty", "injury", "yellow", "red", "half", "end", "whistle", "kickoff", "shootoutGoal", "shootoutMiss"]);
+
+  function loadPrefs() {
+    if (prefsLoaded) return;
+    prefsLoaded = true;
+    try {
+      const v = localStorage.getItem("tf26_vol");
+      if (v != null) volume = Math.max(0, Math.min(1, parseFloat(v)));
+      muted = localStorage.getItem("tf26_muted") === "1";
+      minorEnabled = localStorage.getItem("tf26_minor") === "1";
+    } catch (e) { /* sem storage */ }
+  }
+
+  function applyMaster() {
+    if (master) master.gain.value = muted ? 0 : volume;
+  }
+
   function audio() {
+    loadPrefs();
     if (!ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
       ctx = new AC();
       master = ctx.createGain();
-      master.gain.value = 0.9;
       master.connect(ctx.destination);
     }
+    applyMaster();
     if (ctx.state === "suspended") ctx.resume().catch(() => {});
     return ctx;
   }
@@ -136,14 +161,18 @@
   /* Eventos do jogo → sons. */
   function play(type) {
     if (!enabled) return;
+    loadPrefs();
+    if (muted) return;
+    if (!MAIN.has(type) && !minorEnabled) return; // eventos menores silenciados por padrão
     switch (type) {
       case "goal":
+      case "shootoutGoal":
         if (!audio()) return;
-        // explosão instantânea da torcida: grito agudo + massa grave, curto e forte
-        crowdSwell({ attack: 0.02, hold: 0.25, decay: 1.0, peak: 0.6, freq: 1500, q: 0.9 });
-        crowdSwell({ attack: 0.02, hold: 0.3, decay: 1.2, peak: 0.45, freq: 700, q: 0.6 });
-        crowdSwell({ attack: 0.15, hold: 0.2, decay: 0.9, peak: 0.2, freq: 2400, q: 1.2, delay: 0.05 });
-        applause(1.3, 0.12);
+        // rugido curto e explosivo da torcida: ataque instantâneo, corpo grave forte, brilho no topo
+        crowdSwell({ attack: 0.015, hold: 0.35, decay: 1.1, peak: 0.75, freq: 620, q: 0.5 });
+        crowdSwell({ attack: 0.02, hold: 0.3, decay: 0.95, peak: 0.55, freq: 1300, q: 0.7 });
+        crowdSwell({ attack: 0.02, hold: 0.18, decay: 0.7, peak: 0.28, freq: 2600, q: 1.1, delay: 0.02 });
+        applause(1.1, 0.14);
         break;
       case "goalOther": // gol em outro jogo da rodada: rugido distante
         crowdSwell({ attack: 0.1, hold: 0.15, decay: 1.1, peak: 0.12, freq: 700, q: 0.7 });
@@ -172,6 +201,10 @@
       case "injury":
         crowdSwell({ attack: 0.25, hold: 0.2, decay: 1.2, peak: 0.1, freq: 420, q: 0.8 }); // murmúrio
         break;
+      case "shootoutMiss":
+        whistle("short");
+        crowdSwell({ attack: 0.12, hold: 0.1, decay: 1.0, peak: 0.22, freq: 520, q: 0.7, delay: 0.1 });
+        break;
       case "sub":
         applause(1.4, 0.07);
         break;
@@ -199,6 +232,32 @@
       enabled = !enabled;
       if (!enabled) stopAmbience();
       return enabled;
+    },
+    // controle de volume / mudo / eventos menores
+    get volume() { loadPrefs(); return volume; },
+    get muted() { loadPrefs(); return muted; },
+    get minorEnabled() { loadPrefs(); return minorEnabled; },
+    setVolume(v) {
+      loadPrefs();
+      volume = Math.max(0, Math.min(1, v));
+      try { localStorage.setItem("tf26_vol", String(volume)); } catch (e) {}
+      applyMaster();
+      return volume;
+    },
+    setMuted(b) {
+      loadPrefs();
+      muted = !!b;
+      try { localStorage.setItem("tf26_muted", muted ? "1" : "0"); } catch (e) {}
+      applyMaster();
+      if (muted) stopAmbience();
+      return muted;
+    },
+    toggleMute() { return this.setMuted(!muted); },
+    setMinorEnabled(b) {
+      loadPrefs();
+      minorEnabled = !!b;
+      try { localStorage.setItem("tf26_minor", minorEnabled ? "1" : "0"); } catch (e) {}
+      return minorEnabled;
     }
   };
 })();
