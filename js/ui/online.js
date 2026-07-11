@@ -46,6 +46,21 @@
     setTimeout(() => el.remove(), 3000);
   }
 
+  const SND = () => window.TF.sounds;
+  function soundHtml() {
+    const s = SND();
+    return '<span class="sound-ctl">' +
+      '<button class="btn" id="snd-mute" title="Som">' + (s.muted ? "🔇" : "🔊") + "</button>" +
+      '<input type="range" id="snd-vol" min="0" max="100" value="' + Math.round(s.volume * 100) + '" title="Volume">' +
+      "</span>";
+  }
+  function bindSound(root) {
+    const mute = root.querySelector("#snd-mute");
+    if (mute) mute.addEventListener("click", () => { SND().toggleMute(); render(); });
+    const vol = root.querySelector("#snd-vol");
+    if (vol) vol.addEventListener("input", e => { const v = parseInt(e.target.value, 10); SND().setVolume(v / 100); if (SND().muted && v > 0) SND().setMuted(false); });
+  }
+
   function modal(html, onMount) {
     const overlay = document.createElement("div");
     overlay.className = "modal-overlay";
@@ -128,6 +143,18 @@
       st.live.waitingMe = (d.waiting || []).includes(st.session.playerId);
       if (st.view === "round") { renderRoundControls(); }
     });
+    es.addEventListener("roundPaused", e => {
+      const d = JSON.parse(e.data);
+      if (!st.live) return;
+      st.live.pausedBy = d.by || null;
+      // quem não está gerenciando vê um aviso; quem gerencia já tem o overlay
+      if (st.view === "round" && !st._managing) showPausedBanner(d.by);
+    });
+    es.addEventListener("roundResumed", () => {
+      if (!st.live) return;
+      st.live.pausedBy = null;
+      hidePausedBanner();
+    });
     es.addEventListener("roundEnd", e => {
       window.TF.sounds.stopAmbience();
       st.live = null;
@@ -170,6 +197,7 @@
   }
   function isHost() { return st.lobby && st.lobby.hostId === st.session.playerId; }
   function me() { return st.lobby.players.find(p => p.id === st.session.playerId); }
+  function meLobbyReady() { const m = me(); return !!(m && m.lobbyReady); }
 
   // ---------- telas ----------
   function render() {
@@ -264,11 +292,16 @@
         '<div class="grid2" style="margin-top:12px">' +
           '<div class="card"><h3 style="margin-top:0">Técnicos na sala</h3><table class="data"><tbody>' +
             lb.players.map(p => "<tr><td>" + (p.online ? "🟢" : "⚪") + "</td><td><b>" + esc(p.name) + "</b>" + (p.id === lb.hostId ? " 👑" : "") + "</td><td>" +
-              (p.clubId ? esc(lobbyClubName(p.clubId)) : "<span class='muted'>escolhendo clube…</span>") + "</td></tr>").join("") +
+              (p.clubId ? esc(lobbyClubName(p.clubId)) : "<span class='muted'>escolhendo clube…</span>") + "</td>" +
+              "<td>" + (p.id === lb.hostId ? "" : (p.lobbyReady ? "<span class='text-green'>✔ pronto</span>" : "<span class='muted'>aguardando</span>")) + "</td></tr>").join("") +
           "</tbody></table>" +
-          (isHost() ? '<div class="row" style="margin-top:10px"><label>País: <select id="lb-country">' +
-            Object.keys(COUNTRY_NAMES).map(c => '<option value="' + c + '"' + (c === lb.countryId ? " selected" : "") + ">" + COUNTRY_NAMES[c] + "</option>").join("") +
-            '</select></label><button class="btn primary" id="lb-start">▶ Iniciar jogo</button></div>' : "<p class='muted'>Aguardando o dono da sala iniciar…</p>") +
+          (isHost()
+            ? '<div class="row" style="margin-top:10px"><label>País: <select id="lb-country">' +
+              Object.keys(COUNTRY_NAMES).map(c => '<option value="' + c + '"' + (c === lb.countryId ? " selected" : "") + ">" + COUNTRY_NAMES[c] + "</option>").join("") +
+              '</select></label><button class="btn primary" id="lb-start"' + (lb.canStart ? "" : " disabled") + ">▶ Iniciar jogo</button></div>" +
+              (lb.canStart ? "" : "<p class='muted' style='font-size:.8rem;margin-top:6px'>O botão libera quando todos escolherem clube e clicarem em <b>Pronto</b>.</p>")
+            : '<div class="row" style="margin-top:10px"><button class="btn ' + (meLobbyReady() ? "" : "primary") + '" id="lb-ready"' + (me() && me().clubId ? "" : " disabled") + ">" + (meLobbyReady() ? "✔ Pronto (aguardando)" : "Estou pronto") + "</button>" +
+              "<span class='muted' style='font-size:.82rem'>" + (me() && me().clubId ? "Confirme quando escolher o clube." : "Escolha um clube abaixo.") + "</span></div>") +
           "</div>" +
           '<div class="card"><h3 style="margin-top:0">Chat</h3>' +
             '<div id="chat-log" style="height:180px;overflow-y:auto;font-size:.88rem;margin-bottom:8px">' + chatHtml() + "</div>" +
@@ -288,6 +321,10 @@
     if (startBtn) startBtn.addEventListener("click", async () => {
       const r = await api("start");
       if (!r.ok) toast(r.reason);
+    });
+    const readyBtn = $("#lb-ready");
+    if (readyBtn) readyBtn.addEventListener("click", async () => {
+      await api("lobbyReady", { ready: !meLobbyReady() });
     });
 
     loadLobbyClubs().then(world => {
@@ -333,7 +370,7 @@
   // ---------- tela principal da sala ----------
   const TABS = [
     ["rodada", "▶ Rodada"], ["squad", "👥 Elenco"], ["lineup", "📋 Escalação"],
-    ["table", "🏆 Tabela"], ["cup", "🏅 Copa"], ["transfers", "💱 Transferências"],
+    ["table", "🏆 Tabela"], ["clubs", "🏟️ Clubes"], ["cup", "🏅 Copa"], ["transfers", "💱 Transferências"],
     ["news", "📰 Notícias"], ["chat", "💬 Chat"]
   ];
 
@@ -356,6 +393,7 @@
         '<div class="stat"><div class="label">Temporada</div><div class="value">' + st.shared.seasonYear + " · Sem " + st.shared.week + "</div></div>" +
         '<div class="stat"><div class="label">Próximo</div><div class="value" style="max-width:220px;overflow:hidden;text-overflow:ellipsis">' + esc(st.shared.slot.label) + "</div></div>" +
         '<div class="stat"><div class="label">Prontos</div><div class="value">' + readyCount + "/" + onlineCount + "</div></div>" +
+        soundHtml() +
         '<button class="btn ' + (meP && meP.ready ? "" : "primary") + ' btn-advance" id="btn-ready">' + (meP && meP.ready ? "✔ Aguardando…" : "Pronto ▶") + "</button>" +
       "</div>" +
       '<div class="main">' +
@@ -369,6 +407,7 @@
       const now = !(meP && meP.ready);
       await api("ready", { ready: now });
     });
+    bindSound(app);
     drawTab($("#content"));
   }
 
@@ -395,6 +434,10 @@
       drawLineup(el, club);
     } else if (st.tab === "table") {
       drawTable(el);
+    } else if (st.tab === "clubs") {
+      drawClubs(el);
+    } else if (st.tab === "clubView") {
+      drawClubView(el);
     } else if (st.tab === "cup") {
       drawCup(el);
     } else if (st.tab === "transfers") {
@@ -412,15 +455,17 @@
     }
   }
 
+  function footLabel(p) { return p.foot === "E" ? "Canhoto" : p.foot === "A" ? "Ambidestro" : "Destro"; }
+
   function drawSquad(el, club) {
     const order = ["GOL", "ZAG", "LD", "LE", "VOL", "MC", "MEI", "PD", "PE", "ATA"];
     const players = club.players.slice().sort((a, b) => order.indexOf(a.pos) - order.indexOf(b.pos) || b.rating - a.rating);
     el.innerHTML =
       "<h2>Elenco <span class='muted' style='font-size:.9rem'>(salários " + money(F.squadWages(club)) + "/rodada)</span></h2>" +
-      '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>Pos</th><th>Nome</th><th class="num">Idade</th><th class="num">Força</th><th>Características</th><th>Energia</th><th class="num">J</th><th class="num">G</th><th class="num">Salário</th><th class="num">Contrato</th><th>Status</th></tr></thead><tbody>' +
+      '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>Pos</th><th>Nome</th><th class="num">Idade</th><th>Pé</th><th class="num">Força</th><th>Características</th><th>Energia</th><th class="num">J</th><th class="num">G</th><th class="num">Salário</th><th class="num">Contrato</th><th>Status</th></tr></thead><tbody>' +
       players.map(p =>
         '<tr data-p="' + p.id + '" style="cursor:pointer"><td>' + pBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b></td>" +
-        '<td class="num">' + p.age + '</td><td class="num">' + rBadge(p.rating) + "</td>" +
+        '<td class="num">' + p.age + "</td><td>" + footLabel(p) + "</td><td class=\"num\">" + rBadge(p.rating) + "</td>" +
         "<td>" + (p.traits || []).map(t => '<span class="trait">' + esc(t) + "</span>").join("") + "</td>" +
         "<td>" + bar(p.energy) + "</td>" +
         '<td class="num">' + p.seasonStats.games + '</td><td class="num">' + p.seasonStats.goals + "</td>" +
@@ -513,10 +558,13 @@
 
   function drawLineup(el, club) {
     const t = st.personal.tactics;
+    const sp = st.personal.setPieces || {};
     const formation = M.FORMATIONS[t.formationName] || M.FORMATIONS["4-4-2"];
     const coords = M.FORMATION_COORDS[t.formationName] || M.FORMATION_COORDS["4-4-2"];
     const byId = {};
     for (const p of club.players) byId[p.id] = p;
+    let selSlot = null; // índice do slot selecionado no campo
+
     el.innerHTML =
       "<h2>Escalação e táticas</h2>" +
       '<div class="card"><div class="row">' +
@@ -527,7 +575,68 @@
         '<button class="btn" id="sl-auto">Escalar automaticamente</button>' +
       "</div></div>" +
       '<div class="lineup-wrap"><div class="pitch" id="pitch"><div class="center-line"></div><div class="center-circle"></div></div>' +
-      '<div class="card mb0"><p class="muted" style="font-size:.85rem">Clique em uma camisa para trocar o jogador. A escalação é enviada automaticamente para o servidor e vale para a próxima rodada.</p></div></div>';
+      '<div><div class="card" id="sl-setpieces"></div><div class="card mb0" id="sl-avail"></div></div></div>';
+
+    function starterPlayers() { return st.personal.squad.starters.map(id => id ? byId[id] : null); }
+
+    function drawSetPieces() {
+      const starters = starterPlayers().filter(Boolean);
+      const opt = (sel, gkOk) => starters.filter(p => gkOk || p.pos !== "GOL")
+        .map(p => '<option value="' + p.id + '"' + (p.id === sel ? " selected" : "") + ">" + esc(p.name) + " (" + p.pos + ")</option>").join("");
+      $("#sl-setpieces").innerHTML =
+        "<h3 style='margin-top:0'>Capitão e cobradores</h3>" +
+        '<div class="set-pieces">' +
+          '<div class="sp-item"><span>👑 Capitão</span><select data-sp="captain">' + opt(sp.captain, true) + "</select></div>" +
+          '<div class="sp-item"><span>🎯 Faltas</span><select data-sp="freeKick">' + opt(sp.freeKick) + "</select></div>" +
+          '<div class="sp-item"><span>◀ Esc. esq.</span><select data-sp="cornerLeft">' + opt(sp.cornerLeft) + "</select></div>" +
+          '<div class="sp-item"><span>▶ Esc. dir.</span><select data-sp="cornerRight">' + opt(sp.cornerRight) + "</select></div></div>";
+      $("#sl-setpieces").querySelectorAll("[data-sp]").forEach(s => s.addEventListener("change", async e => {
+        sp[e.target.dataset.sp] = e.target.value;
+        await api("setPieces", { key: e.target.dataset.sp, id: e.target.value });
+      }));
+    }
+
+    function drawAvail() {
+      const slotPos = selSlot != null ? formation[selSlot] : null;
+      const used = new Set(st.personal.squad.starters.filter(Boolean));
+      const eligible = club.players.filter(p => p.contractYears > 0 && !p.injuryWeeks && !p.suspended)
+        .sort((a, b) => slotPos ? (b.rating * M.positionFactor(b, slotPos)) - (a.rating * M.positionFactor(a, slotPos)) : b.rating - a.rating);
+      $("#sl-avail").innerHTML =
+        "<h3 style='margin-top:0'>Jogadores disponíveis" + (slotPos ? " — vaga de <b>" + slotPos + "</b>" : "") + "</h3>" +
+        (slotPos ? "<p class='muted' style='font-size:.78rem;margin-bottom:6px'>Clique num jogador para escalar nessa posição. <span class='text-green'>Verde = da posição.</span></p>"
+          : "<p class='muted' style='font-size:.78rem;margin-bottom:6px'>Clique numa camisa no campo para escolher a vaga, depois num jogador aqui.</p>") +
+        '<table class="data"><tbody>' +
+        eligible.map(p => {
+          const inXI = used.has(p.id);
+          const sug = slotPos && p.pos === slotPos;
+          return "<tr data-pick='" + p.id + "'" + (selSlot != null ? " style='cursor:pointer'" : "") + " class='" + (sug ? "sug-row" : "") + "'>" +
+            "<td>" + pBadge(p.pos) + "</td><td>" + esc(p.name) + (inXI ? " <span class='muted'>(titular)</span>" : "") + "</td>" +
+            "<td class='num'>" + rBadge(p.rating) + "</td><td>" + bar(p.energy) + "</td></tr>";
+        }).join("") + "</tbody></table>";
+      if (selSlot != null) $("#sl-avail").querySelectorAll("[data-pick]").forEach(tr => tr.addEventListener("click", () => assign(tr.dataset.pick)));
+    }
+
+    async function assign(pid) {
+      const idx = selSlot;
+      const starters = st.personal.squad.starters;
+      const prevAt = starters.indexOf(pid);
+      if (prevAt >= 0 && prevAt !== idx) starters[prevAt] = starters[idx]; // troca com quem estava lá
+      starters[idx] = pid;
+      st.personal.squad.bench = st.personal.squad.bench.filter(id => id !== pid);
+      rebuildBench();
+      selSlot = null;
+      drawPitch(); drawAvail(); drawSetPieces();
+      await api("lineup", { starters: st.personal.squad.starters, bench: st.personal.squad.bench });
+    }
+
+    function rebuildBench() {
+      const used = new Set(st.personal.squad.starters.filter(Boolean));
+      const cur = st.personal.squad.bench.filter(id => byId[id] && !used.has(id));
+      const rest = club.players.filter(p => !used.has(p.id) && !cur.includes(p.id) && p.contractYears > 0 && !p.injuryWeeks && !p.suspended)
+        .sort((a, b) => b.rating - a.rating);
+      while (cur.length < 7 && rest.length) cur.push(rest.shift().id);
+      st.personal.squad.bench = cur.slice(0, 7);
+    }
 
     function drawPitch() {
       const pitch = $("#pitch");
@@ -537,32 +646,17 @@
         const p = pid ? byId[pid] : null;
         const [x, y] = coords[i];
         const div = document.createElement("div");
-        div.className = "shirt" + (p ? "" : " empty") + (pos === "GOL" ? " gk" : "");
+        div.className = "shirt" + (p ? "" : " empty") + (pos === "GOL" ? " gk" : "") + (selSlot === i ? " selected" : "");
         div.style.left = x + "%";
         div.style.top = (100 - y) + "%";
+        const eColor = p ? (p.energy > 60 ? "var(--green)" : p.energy > 35 ? "var(--yellow)" : "var(--red)") : "";
+        const isCap = p && sp.captain === p.id;
         div.innerHTML = '<div class="jersey">' + (p ? Math.round(p.rating) : pos) + "</div>" +
-          '<div class="pname' + (p && p.pos !== pos ? " improv" : "") + '">' + (p ? esc(p.name.split(" ").slice(-1)[0]) : "vazio") + "</div>";
-        div.addEventListener("click", () => pickSlot(i, pos));
+          (p ? '<div class="shirt-energy"><i style="width:' + Math.round(p.energy) + "%;background:" + eColor + '"></i></div>' : "") +
+          '<div class="pname' + (p && p.pos !== pos ? " improv" : "") + '">' + (p ? (isCap ? "© " : "") + esc(p.name.split(" ").slice(-1)[0]) : "vazio") + "</div>";
+        div.addEventListener("click", () => { selSlot = selSlot === i ? null : i; drawPitch(); drawAvail(); });
         pitch.appendChild(div);
       });
-    }
-
-    function pickSlot(slotIndex, pos) {
-      const used = new Set(st.personal.squad.starters.filter((id, i) => i !== slotIndex && id));
-      const cands = club.players.filter(p => !used.has(p.id) && p.contractYears > 0 && !p.injuryWeeks && !p.suspended)
-        .sort((a, b) => (b.rating * M.positionFactor(b, pos)) - (a.rating * M.positionFactor(a, pos)));
-      modal(
-        "<h3>Escolher jogador (" + pos + ")</h3>" +
-        '<table class="data"><tbody>' +
-        cands.map(p => '<tr data-pick="' + p.id + '" style="cursor:pointer"><td>' + pBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b>" + (p.pos !== pos ? " <span class='muted'>(improvisado)</span>" : "") + "</td><td class='num'>" + rBadge(p.rating) + "</td><td>" + bar(p.energy) + "</td></tr>").join("") +
-        "</tbody></table>",
-        ov => ov.querySelectorAll("[data-pick]").forEach(tr => tr.addEventListener("click", async () => {
-          st.personal.squad.starters[slotIndex] = tr.dataset.pick;
-          st.personal.squad.bench = st.personal.squad.bench.filter(id => id !== tr.dataset.pick);
-          ov.remove();
-          drawPitch();
-          await api("lineup", { starters: st.personal.squad.starters, bench: st.personal.squad.bench });
-        })));
     }
 
     $("#sl-form").addEventListener("change", async e => {
@@ -576,9 +670,9 @@
     $("#sl-train").addEventListener("change", e => api("tactics", { training: e.target.value }));
     $("#sl-auto").addEventListener("click", async () => {
       const r = await api("autoLineup");
-      if (r.squad) { st.personal.squad = r.squad; drawPitch(); }
+      if (r.squad) { st.personal.squad = r.squad; selSlot = null; drawPitch(); drawAvail(); drawSetPieces(); }
     });
-    drawPitch();
+    drawPitch(); drawSetPieces(); drawAvail();
   }
 
   function drawTable(el) {
@@ -626,6 +720,43 @@
       html += '<div class="card"><h3 style="margin-top:0">Fase ' + cup.history[i].phase + '</h3><table class="data"><tbody>' + cup.history[i].results.map(tieRow).join("") + "</tbody></table></div>";
     }
     el.innerHTML = html;
+  }
+
+  // ---------- clubes (navegar times e ofertar) ----------
+  function drawClubs(el) {
+    const clubs = Object.values(st.shared.clubs).slice().sort((a, b) => b.rating - a.rating);
+    el.innerHTML =
+      "<h2>Clubes — " + esc(st.shared.countryName) + "</h2>" +
+      '<div class="club-grid">' +
+      clubs.map(c =>
+        '<div class="club-pick" data-club="' + c.id + '">' + crest(c, 34) +
+        '<div><div class="cname">' + esc(c.name) + '</div><div class="cinfo">Série ' + c.division + " · Força " + c.rating + " · " + c.players.length + " jog." +
+        (humanNameByClub(c.id) ? " · <span class='text-green'>" + esc(humanNameByClub(c.id)) + "</span>" : "") + "</div></div></div>").join("") +
+      "</div>";
+    el.querySelectorAll("[data-club]").forEach(d => d.addEventListener("click", () => { st._clubView = d.dataset.club; st.tab = "clubView"; render(); }));
+  }
+
+  function drawClubView(el) {
+    const club = clubById(st._clubView);
+    if (!club) { st.tab = "clubs"; render(); return; }
+    const mine = club.id === myClub().id;
+    const win = st.shared.window;
+    const order = ["GOL", "ZAG", "LD", "LE", "VOL", "MC", "MEI", "PD", "PE", "ATA"];
+    const players = club.players.slice().sort((a, b) => order.indexOf(a.pos) - order.indexOf(b.pos) || b.rating - a.rating);
+    el.innerHTML =
+      '<h2><button class="btn small" id="cv-back">←</button> ' + crest(club, 28) + " " + esc(club.name) +
+      ' <span class="muted" style="font-size:.85rem">Série ' + club.division + " · Força " + club.rating + (humanNameByClub(club.id) ? " · Téc.: " + esc(humanNameByClub(club.id)) : " · IA") + "</span></h2>" +
+      (!mine ? '<p class="' + (win.open ? "text-green" : "money-neg") + '" style="margin-bottom:10px">' + esc(win.message) + "</p>" : "") +
+      '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>Pos</th><th>Nome</th><th class="num">Idade</th><th>Pé</th><th class="num">Força</th><th>Características</th><th class="num">Contrato</th><th class="num">Pedida</th>' + (!mine ? "<th></th>" : "") + "</tr></thead><tbody>" +
+      players.map(p =>
+        "<tr><td>" + pBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b></td><td class='num'>" + p.age + "</td><td>" + footLabel(p) + "</td><td class='num'>" + rBadge(p.rating) + "</td>" +
+        "<td>" + (p.traits || []).map(t => '<span class="trait">' + esc(t) + "</span>").join("") + "</td>" +
+        "<td class='num'>" + (p.contractYears > 0 ? p.contractYears + " ano(s)" : "livre") + "</td>" +
+        "<td class='num'>" + (p.contractYears > 0 ? money(T.askingPrice(p, club)) : "—") + "</td>" +
+        (!mine ? '<td><button class="btn small" data-offer="' + p.id + '">Proposta</button></td>' : "") + "</tr>").join("") +
+      "</tbody></table></div>";
+    el.querySelector("#cv-back").addEventListener("click", () => { st.tab = "clubs"; render(); });
+    el.querySelectorAll("[data-offer]").forEach(b => b.addEventListener("click", () => offerModal(b.dataset.offer)));
   }
 
   function drawTransfers(el, club) {
@@ -746,7 +877,11 @@
         '<div class="round-detail" id="detail"></div>' +
       "</div></div>";
     app.querySelectorAll(".match-card").forEach(card => card.addEventListener("click", () => {
-      live.selected = parseInt(card.dataset.i, 10);
+      const i = parseInt(card.dataset.i, 10);
+      const m = live.matches[i];
+      const mine = m.humanH === st.session.playerId || m.humanA === st.session.playerId;
+      if (mine && !m.fin) { openLiveManage(); return; }
+      live.selected = i;
       app.querySelectorAll(".match-card").forEach(c => c.classList.toggle("selected", c === card));
       buildDetail();
     }));
@@ -760,68 +895,163 @@
     if (!el || !st.live) return;
     const live = st.live;
     const myMatch = live.matches.find(m => m.humanH === st.session.playerId || m.humanA === st.session.playerId);
-    let html = "";
-    if (live.waitingMe) {
-      html += '<button class="btn primary" id="rc-2half">▶ Pronto para o 2º tempo</button>';
-    }
-    if (myMatch && !myMatch.fin) {
-      html += '<button class="btn" id="rc-subs">Substituições</button><button class="btn" id="rc-tactics">Táticas</button>';
-    }
-    el.innerHTML = html || '<span class="muted">Acompanhando a rodada…</span>';
+    let html = soundHtml();
+    if (live.waitingMe) html += '<button class="btn primary" id="rc-2half">▶ Pronto para o 2º tempo</button>';
+    if (myMatch && !myMatch.fin) html += '<button class="btn" id="rc-manage">⚙️ Gerir meu time</button>';
+    if (!myMatch) html += '<span class="muted">Acompanhando a rodada…</span>';
+    el.innerHTML = html;
+    bindSound(el);
     const b2 = $("#rc-2half");
     if (b2) b2.addEventListener("click", async () => { live.waitingMe = false; renderRoundControls(); await api("ready2h"); });
-    const bs = $("#rc-subs");
-    if (bs) bs.addEventListener("click", () => liveSubsModal(myMatch));
-    const bt = $("#rc-tactics");
-    if (bt) bt.addEventListener("click", liveTacticsModal);
+    const bm = $("#rc-manage");
+    if (bm) bm.addEventListener("click", openLiveManage);
   }
 
-  function liveSubsModal(myMatch) {
-    const club = myClub();
-    const side = myMatch.humanH === st.session.playerId ? "h" : "a";
-    const lineupInfo = myMatch.lineups[side];
-    const onField = new Set(lineupInfo.map(s => s.id).filter(Boolean));
-    const benchPlayers = club.players.filter(p => !onField.has(p.id) && !p.injuryWeeks && !p.suspended && p.contractYears > 0)
-      .sort((a, b) => b.rating - a.rating).slice(0, 7);
-    let outSel = null;
-    modal(
-      "<h3>Substituições</h3><h3 style='margin-top:8px'>Em campo</h3>" +
-      '<table class="data"><tbody>' +
-      lineupInfo.filter(s => s.id).map(s => '<tr data-out="' + s.id + '" style="cursor:pointer"><td>' + pBadge(s.pos) + "</td><td>" + esc(s.name) + "</td><td class='num'>" + rBadge(s.rating) + "</td></tr>").join("") +
-      "</tbody></table><h3>Banco</h3>" +
-      '<table class="data"><tbody>' +
-      benchPlayers.map(p => '<tr data-in="' + p.id + '" style="cursor:pointer"><td>' + pBadge(p.pos) + "</td><td>" + esc(p.name) + "</td><td class='num'>" + rBadge(p.rating) + "</td></tr>").join("") +
-      "</tbody></table>" +
-      '<div class="actions"><button class="btn" data-x>Fechar</button></div>',
+  // ---------- banner de pausa (quando outro técnico gerencia) ----------
+  function showPausedBanner(byName) {
+    hidePausedBanner();
+    const el = document.createElement("div");
+    el.id = "paused-banner";
+    el.className = "modal-overlay";
+    el.innerHTML = '<div class="modal" style="text-align:center"><h3 style="margin:0">⏸ Rodada pausada</h3><p class="muted">' + esc(byName || "Um técnico") + " está mexendo no time…</p></div>";
+    document.body.appendChild(el);
+  }
+  function hidePausedBanner() { const b = document.getElementById("paused-banner"); if (b) b.remove(); }
+
+  // ---------- gestão ao vivo online (pausa a rodada de todos) ----------
+  function openLiveManage() {
+    if (st._manageOv) return;
+    const myMatch = st.live.matches.find(m => m.humanH === st.session.playerId || m.humanA === st.session.playerId);
+    if (!myMatch || myMatch.fin) return;
+    api("manageOpen").then(r => {
+      if (!r.ok) { toast(r.reason || "Não foi possível gerir agora."); return; }
+      st._managing = true;
+      const mL = r.lineup;
+      let sel = null;
+      const t = { style: st.personal.tactics.style, marking: st.personal.tactics.marking };
+      const ov = document.createElement("div");
+      ov.className = "modal-overlay manage-overlay";
+      ov.innerHTML =
+        '<div class="modal manage-modal">' +
+          '<div class="manage-head"><h3 style="margin:0">Gerir meu time <span class="muted" id="lm-sub"></span></h3>' +
+            '<button class="btn primary" id="lm-ready">✔ Pronto — voltar ao jogo</button></div>' +
+          '<div class="manage-tactics" id="lm-tac"></div>' +
+          '<div class="manage-grid"><div class="pitch" id="lm-pitch"><div class="center-line"></div><div class="center-circle"></div></div><div id="lm-side"></div></div>' +
+          "<p class='muted' style='font-size:.78rem;margin-top:6px'>A rodada fica pausada para todos enquanto você mexe. Clique num jogador do campo e depois em outro (trocar) ou no banco (substituir).</p>" +
+        "</div>";
+      document.body.appendChild(ov);
+      st._manageOv = ov;
+
+      function subsLeft() { return 5 - (mL.subsUsed || 0); }
+      function onField() { return mL.lineup.map(s => s.player).filter(Boolean); }
+      function updateSub() { ov.querySelector("#lm-sub").textContent = "· " + subsLeft() + " substituições restantes"; }
+
+      function drawTac() {
+        const opt = (selId, gkOk) => onField().filter(p => gkOk || p.pos !== "GOL").map(p => '<option value="' + p.id + '"' + (p.id === selId ? " selected" : "") + ">" + esc(p.name) + " (" + p.pos + ")</option>").join("");
+        const seg = (name, key, cur, opts) => '<div class="seg-row"><span class="muted" style="min-width:64px;font-size:.8rem">' + name + "</span>" +
+          opts.map(([v, l]) => '<button class="btn small seg' + (cur === v ? " primary" : "") + '" data-tac="' + key + '" data-val="' + v + '">' + l + "</button>").join("") + "</div>";
+        ov.querySelector("#lm-tac").innerHTML =
+          '<div class="seg-row"><span class="muted" style="min-width:64px;font-size:.8rem">Formação</span><select id="lm-form">' +
+            Object.keys(M.FORMATIONS).map(f => "<option" + (f === mL.formationName ? " selected" : "") + ">" + f + "</option>").join("") + "</select></div>" +
+          seg("Estilo", "style", t.style, [["equilibrado", "Equilibrado"], ["ataque", "Ataque total"], ["retranca", "Retranca"]]) +
+          seg("Marcação", "marking", t.marking, [["leve", "Leve"], ["pesada", "Pesada"], ["muito pesada", "Muito pesada"]]) +
+          '<div class="set-pieces"><div class="sp-item"><span>👑 Capitão</span><select data-lsp="captain">' + opt(mL.captainId, true) + "</select></div>" +
+            '<div class="sp-item"><span>🎯 Faltas</span><select data-lsp="freeKick">' + opt(mL.setPieces.freeKick) + "</select></div>" +
+            '<div class="sp-item"><span>◀ Esc. esq.</span><select data-lsp="cornerLeft">' + opt(mL.setPieces.cornerLeft) + "</select></div>" +
+            '<div class="sp-item"><span>▶ Esc. dir.</span><select data-lsp="cornerRight">' + opt(mL.setPieces.cornerRight) + "</select></div></div>";
+        ov.querySelector("#lm-form").addEventListener("change", async e => {
+          const r2 = await api("liveReform", { formation: e.target.value });
+          if (r2.lineup) { Object.assign(mL, r2.lineup); sel = null; drawTac(); drawPitch(); drawSide(); }
+        });
+        ov.querySelectorAll("[data-tac]").forEach(b => b.addEventListener("click", async () => {
+          t[b.dataset.tac] = b.dataset.val; await api("liveTactics", { style: t.style, marking: t.marking }); drawTac();
+        }));
+        ov.querySelectorAll("[data-lsp]").forEach(s => s.addEventListener("change", async e => {
+          const key = e.target.dataset.lsp;
+          if (key === "captain") { mL.captainId = e.target.value; await api("liveCaptain", { id: e.target.value }); }
+          else { mL.setPieces[key] = e.target.value; await api("liveSetPiece", { key, id: e.target.value }); }
+          drawPitch();
+        }));
+      }
+
+      function drawPitch() {
+        const pitch = ov.querySelector("#lm-pitch");
+        pitch.querySelectorAll(".shirt").forEach(s => s.remove());
+        const coords = M.FORMATION_COORDS[mL.formationName] || M.FORMATION_COORDS["4-4-2"];
+        mL.lineup.forEach((slot, i) => {
+          const p = slot.player;
+          const [x, y] = coords[i] || [50, 50];
+          const div = document.createElement("div");
+          div.className = "shirt" + (p ? "" : " empty") + (slot.slotPos === "GOL" ? " gk" : "") + (p && sel === p.id ? " selected" : "");
+          div.style.left = x + "%"; div.style.top = (100 - y) + "%";
+          const eColor = p ? (p.energy > 60 ? "var(--green)" : p.energy > 35 ? "var(--yellow)" : "var(--red)") : "";
+          div.innerHTML = '<div class="jersey">' + (p ? Math.round(p.rating) : slot.slotPos) + "</div>" +
+            (p ? '<div class="shirt-energy"><i style="width:' + Math.round(p.energy) + "%;background:" + eColor + '"></i></div>' : "") +
+            '<div class="pname' + (p && p.pos !== slot.slotPos ? " improv" : "") + '">' + (p ? (mL.captainId === p.id ? "© " : "") + esc(p.name.split(" ").slice(-1)[0]) : slot.slotPos) + "</div>";
+          div.addEventListener("click", () => onPitch(slot));
+          pitch.appendChild(div);
+        });
+      }
+
+      function onPitch(slot) {
+        if (!slot.player) return;
+        const id = slot.player.id;
+        if (sel === null || sel === id) { sel = sel === id ? null : id; drawPitch(); drawSide(); return; }
+        const a = mL.lineup.find(s => s.player && s.player.id === sel);
+        confirmModal("Trocar de posição: <b>" + esc(a.player.name) + "</b> ⇄ <b>" + esc(slot.player.name) + "</b>?", async () => {
+          const r2 = await api("liveSwap", { a: sel, b: id });
+          if (r2.lineup) Object.assign(mL, r2.lineup); else toast(r2.reason || "Falha");
+          sel = null; drawPitch(); drawSide();
+        }, () => { sel = null; drawPitch(); drawSide(); });
+      }
+
+      function drawSide() {
+        const side = ov.querySelector("#lm-side");
+        const selP = sel ? onField().find(p => p && p.id === sel) : null;
+        const bench = mL.bench.filter(Boolean);
+        let html = "";
+        if (selP) {
+          html += "<div class='card mb0' style='padding:12px'><h3 style='margin:0 0 6px'>" + esc(selP.name) + " " + rBadge(selP.rating) + "</h3>" +
+            "<p class='muted' style='font-size:.8rem;margin-bottom:8px'>Energia " + selP.energy + "% · clique noutro do campo para trocar.</p>" +
+            "<div class='muted' style='font-size:.78rem;margin-bottom:4px'>⬆ Substituir por (<span class='text-green'>sugeridos em destaque</span>):</div>";
+          if (subsLeft() <= 0) html += "<p class='muted' style='font-size:.8rem'>Sem substituições restantes.</p>";
+          else if (!bench.length) html += "<p class='muted' style='font-size:.8rem'>Banco vazio.</p>";
+          else html += bench.map(b => '<button class="btn small bench-btn' + (b.pos === selP.pos ? " sug" : "") + '" data-in="' + b.id + '">' + pBadge(b.pos) + " " + esc(b.name.split(" ").slice(-1)[0]) + " " + Math.round(b.rating) + " · " + b.energy + "%</button>").join("");
+          html += "</div>";
+        } else {
+          html = "<div class='card mb0' style='padding:12px'><h3 style='margin:0 0 6px'>Banco de reservas</h3>" +
+            (bench.length ? '<table class="data"><tbody>' + bench.map(b => "<tr><td>" + pBadge(b.pos) + "</td><td>" + esc(b.name) + "</td><td class='num'>" + rBadge(b.rating) + "</td><td class='num'>" + b.energy + "%</td></tr>").join("") + "</tbody></table>" : "<p class='muted'>Banco vazio.</p>") +
+            "<p class='muted' style='font-size:.78rem;margin-top:8px'>Selecione um jogador em campo.</p></div>";
+        }
+        side.innerHTML = html;
+        side.querySelectorAll("[data-in]").forEach(b => b.addEventListener("click", () => {
+          const inP = mL.bench.find(x => x.id === b.dataset.in);
+          confirmModal("Substituir <b>" + esc(selP.name) + "</b> por <b>" + esc(inP ? inP.name : "?") + "</b>?", async () => {
+            const r2 = await api("sub", { out: sel, in: b.dataset.in });
+            if (r2.ok && r2.lineup) { Object.assign(mL, r2.lineup); window.TF.sounds.play("sub"); sel = null; drawPitch(); drawSide(); updateSub(); }
+            else toast(r2.reason || "Falha");
+          });
+        }));
+      }
+
+      ov.querySelector("#lm-ready").addEventListener("click", closeLiveManage);
+      drawTac(); drawPitch(); drawSide(); updateSub();
+    });
+  }
+
+  function closeLiveManage() {
+    if (st._manageOv) { st._manageOv.remove(); st._manageOv = null; }
+    st._managing = false;
+    api("manageClose");
+  }
+
+  function confirmModal(html, onYes, onNo) {
+    modal("<h3>Confirmar alteração</h3><p>" + html + "</p><div class='actions'><button class='btn' data-no>Cancelar</button><button class='btn primary' data-yes>Confirmar</button></div>",
       ov => {
-        ov.querySelector("[data-x]").addEventListener("click", () => ov.remove());
-        ov.querySelectorAll("[data-out]").forEach(tr => tr.addEventListener("click", () => {
-          ov.querySelectorAll("[data-out]").forEach(t => t.style.background = "");
-          tr.style.background = "var(--row-hover)";
-          outSel = tr.dataset.out;
-        }));
-        ov.querySelectorAll("[data-in]").forEach(tr => tr.addEventListener("click", async () => {
-          if (!outSel) return toast("Escolha quem sai primeiro.");
-          const r = await api("sub", { out: outSel, in: tr.dataset.in });
-          ov.remove();
-          toast(r.ok ? "Substituição feita." : r.reason);
-        }));
+        ov.addEventListener("click", e => e.stopPropagation());
+        ov.querySelector("[data-no]").addEventListener("click", () => { ov.remove(); if (onNo) onNo(); });
+        ov.querySelector("[data-yes]").addEventListener("click", () => { ov.remove(); onYes(); });
       });
-  }
-
-  function liveTacticsModal() {
-    modal(
-      "<h3>Táticas durante o jogo</h3>" +
-      '<div class="row">' +
-        '<label>Estilo: <select id="lt-style"><option value="equilibrado">Equilibrado</option><option value="ataque">Ataque total</option><option value="retranca">Retranca</option></select></label>' +
-        '<label>Marcação: <select id="lt-mark"><option value="leve">Leve</option><option value="pesada">Pesada</option><option value="muito pesada">Muito pesada</option></select></label>' +
-      "</div>" +
-      '<div class="actions"><button class="btn primary" data-ok>Aplicar</button></div>',
-      ov => ov.querySelector("[data-ok]").addEventListener("click", async () => {
-        await api("liveTactics", { style: ov.querySelector("#lt-style").value, marking: ov.querySelector("#lt-mark").value });
-        ov.remove();
-        toast("Táticas aplicadas.");
-      }));
   }
 
   function buildDetail() {

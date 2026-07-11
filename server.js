@@ -68,7 +68,7 @@ function createRoom(hostName) {
 }
 
 function addPlayer(room, name) {
-  const player = { id: newId(), name: String(name || "Técnico").slice(0, 20), token: newId(), clubId: null, ready: false, sse: null };
+  const player = { id: newId(), name: String(name || "Técnico").slice(0, 20), token: newId(), clubId: null, ready: false, lobbyReady: false, sse: null };
   room.players.set(player.id, player);
   return player;
 }
@@ -90,13 +90,32 @@ function broadcast(room, event, data) {
   for (const p of room.players.values()) sseSend(p, event, data);
 }
 
+/* Escalação serializada para a tela de gestão online. */
+function serializeLineup(team) {
+  const P = p => p ? { id: p.id, name: p.name, pos: p.pos, rating: p.rating, energy: Math.round(p.energy) } : null;
+  return {
+    formationName: team.formationName || "4-4-2",
+    lineup: team.lineup.map(s => ({ slotPos: s.slotPos, player: P(s.player) })),
+    bench: team.bench.map(P),
+    subsUsed: team.subsUsed || 0,
+    captainId: team.captainId || null,
+    setPieces: team.setPieces || {}
+  };
+}
+
 function lobbyState(room) {
+  const players = [...room.players.values()].map(p => ({ id: p.id, name: p.name, clubId: p.clubId, ready: p.ready, lobbyReady: p.lobbyReady, online: !!p.sse }));
+  // o dono só pode iniciar quando todos online têm clube e os demais estão "prontos"
+  const online = players.filter(p => p.online);
+  const others = online.filter(p => p.id !== room.hostId);
+  const canStart = online.length > 0 && online.every(p => p.clubId) && others.every(p => p.lobbyReady);
   return {
     code: room.code,
     phase: room.phase,
     countryId: room.countryId,
     hostId: room.hostId,
-    players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, clubId: p.clubId, ready: p.ready, online: !!p.sse }))
+    canStart,
+    players
   };
 }
 
@@ -150,7 +169,9 @@ function startLiveRound(room, r) {
     })),
     halftimeWaiting: new Set(), // playerIds dos quais se espera "pronto"
     halftimeTimer: null,
-    timer: null
+    timer: null,
+    paused: false,
+    pausedBy: null
   };
   room.live = live;
   broadcast(room, "roundStart", {
@@ -172,7 +193,7 @@ function startLiveRound(room, r) {
 
 function tickRound(room) {
   const live = room.live;
-  if (!live) return;
+  if (!live || live.paused) return; // rodada congelada enquanto alguém gerencia o time
   const updates = [];
   const newEvents = [];
   let someoneHitHalftime = false;
@@ -249,7 +270,7 @@ function handleAction(room, player, body, respond) {
   if (t === "setCountry") {
     if (player.id !== room.hostId || room.phase !== "lobby") return respond({ ok: false, reason: "Apenas o dono da sala, no lobby." });
     room.countryId = ["BRA", "ENG", "ESP", "ITA", "POR", "GER"].includes(body.countryId) ? body.countryId : "BRA";
-    for (const p of room.players.values()) p.clubId = null;
+    for (const p of room.players.values()) { p.clubId = null; p.lobbyReady = false; }
     pushLobby(room);
     return respond({ ok: true });
   }
@@ -258,6 +279,14 @@ function handleAction(room, player, body, respond) {
     const taken = [...room.players.values()].some(p => p.id !== player.id && p.clubId === body.clubId);
     if (taken) return respond({ ok: false, reason: "Clube já escolhido." });
     player.clubId = body.clubId;
+    player.lobbyReady = false; // ao trocar de clube, precisa confirmar de novo
+    pushLobby(room);
+    return respond({ ok: true });
+  }
+  if (t === "lobbyReady") {
+    if (room.phase !== "lobby") return respond({ ok: false, reason: "A sala já começou." });
+    if (!player.clubId) return respond({ ok: false, reason: "Escolha um clube primeiro." });
+    player.lobbyReady = !!body.ready;
     pushLobby(room);
     return respond({ ok: true });
   }
@@ -265,6 +294,7 @@ function handleAction(room, player, body, respond) {
     if (player.id !== room.hostId || room.phase !== "lobby") return respond({ ok: false, reason: "Apenas o dono da sala pode iniciar." });
     const withClub = [...room.players.values()].filter(p => p.clubId);
     if (!withClub.length) return respond({ ok: false, reason: "Escolham os clubes primeiro." });
+    if (!lobbyState(room).canStart) return respond({ ok: false, reason: "Aguarde todos os técnicos escolherem clube e clicarem em Pronto." });
     room.game = TF.roomGame.createRoomGame(room.countryId);
     for (const p of withClub) {
       const r = room.game.addHuman(p.id, p.name, p.clubId);
@@ -292,6 +322,11 @@ function handleAction(room, player, body, respond) {
     if (Array.isArray(body.starters)) h.squad.starters = body.starters.map(x => x || null).slice(0, 11);
     if (Array.isArray(body.bench)) h.squad.bench = body.bench.slice(0, 7);
     return respond({ ok: true });
+  }
+  if (t === "setPieces") {
+    const r = game.setSquadPiece(player.id, body.key, body.id);
+    if (r.ok) pushSnapshots(room);
+    return respond(r);
   }
   if (t === "tactics") {
     if (body.formationName && TF.match.FORMATIONS[body.formationName]) {
@@ -351,18 +386,49 @@ function handleAction(room, player, body, respond) {
   }
 
   // durante a rodada ao vivo
-  if (t === "sub" || t === "liveTactics" || t === "ready2h") {
+  const LIVE_ACTIONS = ["sub", "liveTactics", "ready2h", "manageOpen", "manageClose", "liveSwap", "liveReform", "liveCaptain", "liveSetPiece"];
+  if (LIVE_ACTIONS.includes(t)) {
     const live = room.live;
     if (!live) return respond({ ok: false, reason: "Nenhuma rodada em andamento." });
     const g = live.games.find(x => x.entry.humanH === player.id || x.entry.humanA === player.id);
     if (!g) return respond({ ok: false, reason: "Você não tem jogo nesta rodada." });
     const sideKey = g.entry.humanH === player.id ? "h" : "a";
+    const team = sideKey === "h" ? g.entry.home : g.entry.away;
+
+    // pausa global enquanto um técnico gerencia o time
+    if (t === "manageOpen") {
+      if (live.paused && live.pausedBy !== player.id) return respond({ ok: false, reason: "Outro técnico está gerenciando; aguarde." });
+      live.paused = true;
+      live.pausedBy = player.id;
+      broadcast(room, "roundPaused", { by: player.name });
+      return respond({ ok: true, lineup: serializeLineup(team) });
+    }
+    if (t === "manageClose") {
+      if (live.pausedBy === player.id) { live.paused = false; live.pausedBy = null; broadcast(room, "roundResumed", {}); }
+      return respond({ ok: true });
+    }
     if (t === "sub") {
       const r = g.match.substitute(sideKey, body.out, body.in);
-      return respond(r);
+      return respond(Object.assign(r, { lineup: serializeLineup(team) }));
+    }
+    if (t === "liveSwap") {
+      const r = g.match.swapPositions(sideKey, body.a, body.b);
+      return respond(Object.assign(r, { lineup: serializeLineup(team) }));
+    }
+    if (t === "liveReform") {
+      const r = TF.match.reformTeam(team, body.formation);
+      return respond(Object.assign(r, { lineup: serializeLineup(team) }));
+    }
+    if (t === "liveCaptain") {
+      team.captainId = body.id;
+      return respond({ ok: true });
+    }
+    if (t === "liveSetPiece") {
+      team.setPieces = team.setPieces || {};
+      if (["freeKick", "cornerLeft", "cornerRight"].includes(body.key)) team.setPieces[body.key] = body.id;
+      return respond({ ok: true });
     }
     if (t === "liveTactics") {
-      const team = sideKey === "h" ? g.entry.home : g.entry.away;
       if (["equilibrado", "ataque", "retranca"].includes(body.style)) team.tactics.style = body.style;
       if (["leve", "pesada", "muito pesada"].includes(body.marking)) team.tactics.marking = body.marking;
       return respond({ ok: true });

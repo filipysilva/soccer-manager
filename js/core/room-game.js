@@ -41,7 +41,7 @@
       const h = {
         id: playerId, name, clubId,
         tactics: { formationName: M().bestFormationFor(club), style: "equilibrado", marking: "leve" },
-        squad: null, training: "auto",
+        squad: null, training: "auto", setPieces: null,
         news: [], offers: [], humanOffers: [] // humanOffers: propostas de outros técnicos pelos meus jogadores
       };
       rg.humans[playerId] = h;
@@ -57,6 +57,26 @@
       h.squad = {
         starters: picked.lineup.map(s => s.player ? s.player.id : null),
         bench: picked.bench.map(p => p.id)
+      };
+      autoAssignSetPiecesFor(h);
+    }
+
+    /* Capitão e cobradores automáticos (mantém escolha do técnico se ainda válida). */
+    function autoAssignSetPiecesFor(h) {
+      const club = clubOf(h);
+      const byId = {};
+      for (const p of club.players) byId[p.id] = p;
+      const starters = h.squad.starters.map(id => byId[id]).filter(Boolean);
+      if (!starters.length) return;
+      const sp = h.setPieces || {};
+      const keep = id => id && byId[id] ? id : null;
+      const bestBy = fn => starters.filter(p => p.pos !== "GOL").sort((a, b) => fn(b) - fn(a))[0];
+      const cross = p => p.skills.pass + p.skills.technique * 0.5 + (p.traits.includes("Cruzamento") ? 25 : 0);
+      h.setPieces = {
+        captain: keep(sp.captain) || (starters.slice().sort((a, b) => (b.rating + b.age) - (a.rating + a.age))[0] || {}).id || null,
+        freeKick: keep(sp.freeKick) || (bestBy(p => p.skills.technique + p.skills.finishing) || {}).id || null,
+        cornerLeft: keep(sp.cornerLeft) || (bestBy(p => cross(p) + (p.foot === "E" ? 18 : 0)) || {}).id || null,
+        cornerRight: keep(sp.cornerRight) || (bestBy(p => cross(p) + (p.foot === "D" ? 18 : 0)) || {}).id || null
       };
     }
 
@@ -84,7 +104,15 @@
       }
       const bench = h.squad.bench.map(id => byId[id])
         .filter(p => p && !used.has(p.id) && !p.injuryWeeks && !p.suspended && p.contractYears > 0);
-      return { club, lineup, bench, tactics: { style: h.tactics.style, marking: h.tactics.marking }, subsUsed: 0 };
+      const sp = h.setPieces || {};
+      return {
+        club, lineup, bench,
+        tactics: { style: h.tactics.style, marking: h.tactics.marking },
+        formationName: h.tactics.formationName,
+        captainId: sp.captain || null,
+        setPieces: { freeKick: sp.freeKick || null, cornerLeft: sp.cornerLeft || null, cornerRight: sp.cornerRight || null },
+        subsUsed: 0
+      };
     }
 
     function aiTeam(club) {
@@ -547,7 +575,7 @@
       if (!h) return null;
       return {
         clubId: h.clubId, tactics: h.tactics, squad: h.squad, training: h.training,
-        news: h.news, offers: h.offers, humanOffers: h.humanOffers,
+        setPieces: h.setPieces, news: h.news, offers: h.offers, humanOffers: h.humanOffers,
         money: clubOf(h).money
       };
     }
@@ -568,9 +596,18 @@
       rg.pendingSlot = null;
     }
 
+    /* Define capitão/cobrador fora da rodada (tela de escalação online). */
+    function setSquadPiece(playerId, key, id) {
+      const h = rg.humans[playerId];
+      if (!h) return { ok: false };
+      h.setPieces = h.setPieces || {};
+      if (key === "captain" || ["freeKick", "cornerLeft", "cornerRight"].includes(key)) h.setPieces[key] = id;
+      return { ok: true };
+    }
+
     Object.assign(rg, {
-      addHuman, removeHuman, humanByClub, autoLineupFor, humanTeam, teamForClub,
-      slotPreview, startRound, completeRound, endOfSeason, hydrate,
+      addHuman, removeHuman, humanByClub, autoLineupFor, autoAssignSetPiecesFor, humanTeam, teamForClub,
+      slotPreview, startRound, completeRound, endOfSeason, hydrate, setSquadPiece,
       transferWindowInfo, makeOfferFrom, respondHumanOffer, respondAiOffer,
       snapshot, personal, addNews, clubOf: (pid) => rg.humans[pid] ? world.clubs[rg.humans[pid].clubId] : null
     });

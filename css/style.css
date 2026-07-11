@@ -263,6 +263,8 @@ tr.me td { background: var(--row-me) !important; }
 .set-pieces .sp-item select { flex: 1; min-width: 0; padding: 3px 6px; font-size: .78rem; }
 .sound-ctl { display: inline-flex; align-items: center; gap: 6px; }
 .sound-ctl input[type=range] { width: 84px; }
+tr.sug-row td { background: color-mix(in srgb, var(--green) 12%, transparent); }
+tr.sug-row td:first-child { box-shadow: inset 3px 0 0 var(--green); }
 
 /* ---------- partida ao vivo ---------- */
 .match-screen { max-width: 900px; margin: 0 auto; }
