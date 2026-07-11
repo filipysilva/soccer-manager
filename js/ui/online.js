@@ -371,7 +371,7 @@
   const TABS = [
     ["rodada", "▶ Rodada"], ["squad", "👥 Elenco"], ["lineup", "📋 Escalação"],
     ["table", "🏆 Tabela"], ["clubs", "🏟️ Clubes"], ["cup", "🏅 Copa"], ["transfers", "💱 Transferências"],
-    ["news", "📰 Notícias"], ["chat", "💬 Chat"]
+    ["finances", "💰 Finanças"], ["news", "📰 Notícias"], ["chat", "💬 Chat"]
   ];
 
   function renderGame(app) {
@@ -442,6 +442,8 @@
       drawCup(el);
     } else if (st.tab === "transfers") {
       drawTransfers(el, club);
+    } else if (st.tab === "finances") {
+      drawFinances(el, club);
     } else if (st.tab === "news") {
       el.innerHTML = "<h2>Notícias</h2>" +
         ((st.personal.news || []).map(n => '<div class="news-item ' + esc(n.type) + '"><div class="nmeta">Temporada ' + n.season + " · Semana " + n.week + '</div><div class="ntitle">' + esc(n.title) + '</div><div class="muted">' + esc(n.text) + "</div></div>").join("") || "<p class='muted'>Sem notícias.</p>");
@@ -676,13 +678,19 @@
   }
 
   function drawTable(el) {
-    const div = st._tblDiv || myClub().division;
-    const rows = C.sortTable(st.shared.tables[div]);
-    const relegN = st.shared.relegated;
+    const lbc = st.shared.leaguesByCountry || {};
+    const cid = st._tblCountry || myClub().countryId;
+    const league = lbc[cid];
+    if (!league) { el.innerHTML = "<h2>Classificação</h2><p class='muted'>Sincronizando…</p>"; return; }
+    const div = st._tblDiv || (cid === myClub().countryId ? myClub().division : "A");
+    const rows = C.sortTable(league.tables[div]);
+    const relegN = league.relegated;
     el.innerHTML =
       "<h2>Classificação</h2>" +
-      '<div class="card"><div class="row"><select id="tb-div"><option value="A"' + (div === "A" ? " selected" : "") + ">" + esc(st.shared.leagueNames.A) + '</option><option value="B"' + (div === "B" ? " selected" : "") + ">" + esc(st.shared.leagueNames.B) + "</option></select>" +
-      '<span class="muted">Rodada ' + st.shared.currentRound + "/" + st.shared.totalRounds + "</span></div></div>" +
+      '<div class="card"><div class="row">' +
+        '<select id="tb-country">' + Object.keys(lbc).map(c => '<option value="' + c + '"' + (c === cid ? " selected" : "") + ">" + esc(lbc[c].name) + "</option>").join("") + "</select>" +
+        '<select id="tb-div"><option value="A"' + (div === "A" ? " selected" : "") + ">" + esc(league.leagueNames.A) + '</option><option value="B"' + (div === "B" ? " selected" : "") + ">" + esc(league.leagueNames.B) + "</option></select>" +
+        '<span class="muted">Rodada ' + league.currentRound + "/" + league.totalRounds + "</span></div></div>" +
       '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>#</th><th>Clube</th><th>Técnico</th><th class="num">P</th><th class="num">J</th><th class="num">V</th><th class="num">E</th><th class="num">D</th><th class="num">SG</th></tr></thead><tbody>' +
       rows.map((r, i) => {
         const c = clubById(r.clubId);
@@ -698,6 +706,7 @@
           "<td>" + (hn ? "<b class='text-green'>" + esc(hn) + "</b>" : "<span class='muted'>IA</span>") + "</td>" +
           '<td class="num"><b>' + r.pts + '</b></td><td class="num">' + r.j + '</td><td class="num">' + r.v + '</td><td class="num">' + r.e + '</td><td class="num">' + r.d + '</td><td class="num">' + r.sg + "</td></tr>";
       }).join("") + "</tbody></table></div>";
+    $("#tb-country").addEventListener("change", e => { st._tblCountry = e.target.value; st._tblDiv = "A"; drawTab(el); });
     $("#tb-div").addEventListener("change", e => { st._tblDiv = e.target.value; drawTab(el); });
   }
 
@@ -722,17 +731,59 @@
     el.innerHTML = html;
   }
 
+  // ---------- finanças e estádio ----------
+  function drawFinances(el, club) {
+    const wages = F.squadWages(club);
+    const sponsor = F.seasonSponsorship(club);
+    const sugg = F.suggestedTicketPrice(club);
+    el.innerHTML =
+      "<h2>Finanças e estádio</h2>" +
+      '<div class="grid2">' +
+        '<div class="card"><h3 style="margin-top:0">Caixa</h3>' +
+          '<p style="font-size:1.8rem;font-weight:800" class="' + (club.money < 0 ? "money-neg" : "text-green") + '">' + money(club.money) + "</p>" +
+          "<p class='muted'>Salários por rodada: <b>" + money(wages) + "</b></p>" +
+          "<p class='muted'>Patrocínio anual: <b>" + money(sponsor) + "</b> (pago no início da temporada)</p>" +
+          "<p class='muted'>Moral da torcida: " + bar(club.moralTorcida) + " " + Math.round(club.moralTorcida) + "%</p></div>" +
+        '<div class="card"><h3 style="margin-top:0">Ingressos</h3>' +
+          "<p class='muted'>Preço sugerido: " + money(sugg) + "</p>" +
+          '<div class="row"><label>Preço do ingresso: <input type="number" id="fi-tk" value="' + club.ticketPrice + '" min="5" max="500" style="width:110px"></label>' +
+          '<button class="btn small" id="fi-tkset">Aplicar</button></div>' +
+          "<p class='muted' style='margin-top:8px;font-size:.83rem'>Preços altos afastam o público. Com a torcida animada dá para cobrar mais.</p></div>" +
+        '<div class="card"><h3 style="margin-top:0">Estádio: ' + esc(club.stadium) + "</h3>" +
+          "<p>Capacidade: <b>" + club.capacity.toLocaleString("pt-BR") + "</b> lugares</p>" +
+          (club.stadiumWorks ? "<p class='text-gold'>Obras: +" + club.stadiumWorks.seats.toLocaleString("pt-BR") + " lugares (" + club.stadiumWorks.weeksLeft + " semanas)</p>" :
+            '<div class="row">' + [5000, 10000, 20000].map(s => '<button class="btn small" data-exp="' + s + '">+' + (s / 1000) + " mil (" + money(F.stadiumExpansionCost(s)) + ")</button>").join("") + "</div>") +
+        "</div>" +
+        '<div class="card"><h3 style="margin-top:0">Gramado</h3><p>Condição: <b>' + esc(club.grass) + "</b></p>" +
+        "<p class='muted' style='font-size:.83rem'>Gramados ruins atrapalham jogadores técnicos.</p></div>" +
+      "</div>";
+    $("#fi-tkset").addEventListener("click", async () => {
+      const v = Math.max(5, Math.min(500, parseInt($("#fi-tk").value, 10) || sugg));
+      await api("ticket", { price: v });
+      toast("Preço do ingresso: " + money(v));
+    });
+    el.querySelectorAll("[data-exp]").forEach(b => b.addEventListener("click", async () => {
+      const r = await api("expand", { seats: parseInt(b.dataset.exp, 10) });
+      toast(r.ok ? "Obras encomendadas!" : (r.reason || "Falha"));
+    }));
+  }
+
   // ---------- clubes (navegar times e ofertar) ----------
   function drawClubs(el) {
-    const clubs = Object.values(st.shared.clubs).slice().sort((a, b) => b.rating - a.rating);
+    const lbc = st.shared.leaguesByCountry || {};
+    const cid = st._clubsCountry || myClub().countryId;
+    const clubs = Object.values(st.shared.clubs).filter(c => c.countryId === cid).sort((a, b) => b.rating - a.rating);
     el.innerHTML =
-      "<h2>Clubes — " + esc(st.shared.countryName) + "</h2>" +
+      "<h2>Clubes</h2>" +
+      '<div class="card"><div class="row"><select id="cb-country">' +
+        Object.keys(lbc).map(c => '<option value="' + c + '"' + (c === cid ? " selected" : "") + ">" + esc(lbc[c].name) + "</option>").join("") + "</select></div></div>" +
       '<div class="club-grid">' +
       clubs.map(c =>
         '<div class="club-pick" data-club="' + c.id + '">' + crest(c, 34) +
         '<div><div class="cname">' + esc(c.name) + '</div><div class="cinfo">Série ' + c.division + " · Força " + c.rating + " · " + c.players.length + " jog." +
         (humanNameByClub(c.id) ? " · <span class='text-green'>" + esc(humanNameByClub(c.id)) + "</span>" : "") + "</div></div></div>").join("") +
       "</div>";
+    $("#cb-country").addEventListener("change", e => { st._clubsCountry = e.target.value; drawTab(el); });
     el.querySelectorAll("[data-club]").forEach(d => d.addEventListener("click", () => { st._clubView = d.dataset.club; st.tab = "clubView"; render(); }));
   }
 

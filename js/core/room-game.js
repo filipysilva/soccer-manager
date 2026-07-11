@@ -534,20 +534,46 @@
     }
 
     // ---------- snapshot para os clientes ----------
-    function serializeClub(c) {
+    // versão leve de jogador (outros países): suficiente para tabela, navegação e propostas
+    function lightPlayer(p) {
+      return {
+        id: p.id, name: p.name, pos: p.pos, age: p.age, nation: p.nation, foot: p.foot,
+        rating: p.rating, potential: p.potential, value: p.value, wage: p.wage,
+        contractYears: p.contractYears, traits: p.traits, forSale: p.forSale, salePrice: p.salePrice || null,
+        energy: Math.round(p.energy),
+        seasonStats: { games: p.seasonStats.games, goals: p.seasonStats.goals }
+      };
+    }
+
+    function serializeClub(c, full) {
       return {
         id: c.id, name: c.name, shortName: c.shortName, division: c.division, rating: c.rating,
+        countryId: c.countryId,
         stadium: c.stadium, capacity: c.capacity, crest: c.crest, money: c.money,
         moralTorcida: c.moralTorcida, ticketPrice: c.ticketPrice, grass: c.grass,
         stadiumWorks: c.stadiumWorks || null,
-        players: c.players
+        players: full ? c.players : c.players.map(lightPlayer)
       };
     }
 
     function snapshot() {
       const country = world.countries[countryId];
+      // todos os clubes de todos os países (paridade com o offline)
       const clubs = {};
-      for (const id of country.clubIdsA.concat(country.clubIdsB)) clubs[id] = serializeClub(world.clubs[id]);
+      const leaguesByCountry = {};
+      for (const cid of Object.keys(world.countries)) {
+        const co = world.countries[cid];
+        const full = cid === countryId; // elenco completo só do país da sala
+        for (const id of co.clubIdsA.concat(co.clubIdsB)) clubs[id] = serializeClub(world.clubs[id], full);
+        leaguesByCountry[cid] = {
+          name: co.name,
+          leagueNames: { A: co.leagueNameA, B: co.leagueNameB },
+          relegated: co.relegated,
+          tables: { A: rg.season.leagues[cid].A.table, B: rg.season.leagues[cid].B.table },
+          currentRound: rg.season.leagues[cid].A.currentRound,
+          totalRounds: rg.season.leagues[cid].A.rounds.length
+        };
+      }
       const cup = rg.season.cups[countryId];
       return {
         countryId,
@@ -559,12 +585,10 @@
         week: rg.week,
         slot: slotPreview(),
         window: transferWindowInfo(),
-        tables: {
-          A: rg.season.leagues[countryId].A.table,
-          B: rg.season.leagues[countryId].B.table
-        },
-        currentRound: rg.season.leagues[countryId].A.currentRound,
-        totalRounds: rg.season.leagues[countryId].A.rounds.length,
+        tables: leaguesByCountry[countryId].tables,
+        currentRound: leaguesByCountry[countryId].currentRound,
+        totalRounds: leaguesByCountry[countryId].totalRounds,
+        leaguesByCountry,
         cup: { phaseName: cup.phaseName, ties: cup.ties, history: cup.history, championId: cup.championId },
         clubs,
         lastResults: rg.lastResults,
