@@ -265,6 +265,7 @@ tr.me td { background: var(--row-me) !important; }
 .sound-ctl input[type=range] { width: 84px; }
 tr.sug-row td { background: color-mix(in srgb, var(--green) 12%, transparent); }
 tr.sug-row td:first-child { box-shadow: inset 3px 0 0 var(--green); }
+.star-mark { font-size: .82em; filter: drop-shadow(0 0 2px rgba(251,191,36,.5)); }
 
 /* ---------- partida ao vivo ---------- */
 .match-screen { max-width: 900px; margin: 0 auto; }

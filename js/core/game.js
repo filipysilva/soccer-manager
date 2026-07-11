@@ -467,6 +467,7 @@
     else r = s.finishing * 0.4 + s.speed * 0.25 + s.technique * 0.2 + s.playmaking * 0.1 + s.pass * 0.05;
     p.rating = U.clamp(Math.round(r), 1, 99);
     p.value = window.TF.world.computeValue(p);
+    p.star = window.TF.world.isStar(p.rating);
   }
 
   // ---------- fim de temporada ----------
@@ -544,7 +545,8 @@
           for (const k of Object.keys(p.skills)) p.skills[k] = Math.round(Math.max(1, p.skills[k] - decline * (0.6 + U.RNG.next() * 0.7)) * 100) / 100;
           recomputeRating(p);
         }
-        p.value = window.TF.world.computeValue(p); // valor acompanha a idade
+        p.value = window.TF.world.computeValue(p);
+    p.star = window.TF.world.isStar(p.rating); // valor acompanha a idade
         p.wage = window.TF.world.wageFor(p.rating, p.age);
         p.contractYears = Math.max(0, p.contractYears - 1);
         if (!isUser) {
@@ -605,8 +607,9 @@
     for (const club of Object.values(state.world.clubs)) {
       for (const p of club.players) {
         state.world.players[p.id] = p;
-        // migração de saves antigos: pé preferido
+        // migração de saves antigos: pé preferido + estrela
         if (!p.foot) p.foot = p.side === "E" ? "E" : "D";
+        if (p.star === undefined) p.star = window.TF.world.isStar(p.rating);
       }
     }
     state.season = data.season; state.coach = data.coach; state.tactics = data.tactics;

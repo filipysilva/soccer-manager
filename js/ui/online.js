@@ -500,6 +500,7 @@
   }
 
   function footLabel(p) { return p.foot === "E" ? "Canhoto" : p.foot === "A" ? "Ambidestro" : "Destro"; }
+  function star(p) { return p && p.star ? ' <span class="star-mark" title="Craque">⭐</span>' : ""; }
 
   function drawSquad(el, club) {
     const order = ["GOL", "ZAG", "LD", "LE", "VOL", "MC", "MEI", "PD", "PE", "ATA"];
@@ -508,7 +509,7 @@
       "<h2>Elenco <span class='muted' style='font-size:.9rem'>(salários " + money(F.squadWages(club)) + "/rodada)</span></h2>" +
       '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>Pos</th><th>Nome</th><th class="num">Idade</th><th>Pé</th><th class="num">Força</th><th>Características</th><th>Energia</th><th class="num">J</th><th class="num">G</th><th class="num">Salário</th><th class="num">Contrato</th><th>Status</th></tr></thead><tbody>' +
       players.map(p =>
-        '<tr data-p="' + p.id + '" style="cursor:pointer"><td>' + pBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b></td>" +
+        '<tr data-p="' + p.id + '" style="cursor:pointer"><td>' + pBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b>" + star(p) + "</td>" +
         '<td class="num">' + p.age + "</td><td>" + footLabel(p) + "</td><td class=\"num\">" + rBadge(p.rating) + "</td>" +
         "<td>" + (p.traits || []).map(t => '<span class="trait">' + esc(t) + "</span>").join("") + "</td>" +
         "<td>" + bar(p.energy) + "</td>" +
@@ -842,7 +843,7 @@
       (!mine ? '<p class="' + (win.open ? "text-green" : "money-neg") + '" style="margin-bottom:10px">' + esc(win.message) + "</p>" : "") +
       '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>Pos</th><th>Nome</th><th class="num">Idade</th><th>Pé</th><th class="num">Força</th><th>Características</th><th class="num">Contrato</th><th class="num">Pedida</th>' + (!mine ? "<th></th>" : "") + "</tr></thead><tbody>" +
       players.map(p =>
-        "<tr><td>" + pBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b></td><td class='num'>" + p.age + "</td><td>" + footLabel(p) + "</td><td class='num'>" + rBadge(p.rating) + "</td>" +
+        "<tr><td>" + pBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b>" + star(p) + "</td><td class='num'>" + p.age + "</td><td>" + footLabel(p) + "</td><td class='num'>" + rBadge(p.rating) + "</td>" +
         "<td>" + (p.traits || []).map(t => '<span class="trait">' + esc(t) + "</span>").join("") + "</td>" +
         "<td class='num'>" + (p.contractYears > 0 ? p.contractYears + " ano(s)" : "livre") + "</td>" +
         "<td class='num'>" + (p.contractYears > 0 ? money(T.askingPrice(p, club)) : "—") + "</td>" +
@@ -879,7 +880,7 @@
         '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>Pos</th><th>Nome</th><th class="num">Idade</th><th class="num">Força</th><th>Clube</th><th>Técnico</th><th class="num">Pedida</th><th></th></tr></thead><tbody>' +
         all.slice(0, 50).map(({ p, c }) => {
           const hn = humanNameByClub(c.id);
-          return "<tr><td>" + pBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b></td><td class='num'>" + p.age + "</td><td class='num'>" + rBadge(p.rating) + "</td>" +
+          return "<tr><td>" + pBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b>" + star(p) + "</td><td class='num'>" + p.age + "</td><td class='num'>" + rBadge(p.rating) + "</td>" +
             '<td><span class="club-cell">' + crest(c, 18) + esc(c.shortName) + "</span></td>" +
             "<td>" + (hn ? "<b class='text-green'>" + esc(hn) + "</b>" : "<span class='muted'>IA</span>") + "</td>" +
             "<td class='num'>" + (p.contractYears > 0 ? money(T.askingPrice(p, c)) : "livre") + "</td>" +

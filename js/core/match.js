@@ -46,7 +46,8 @@
     const energy = 0.55 + 0.45 * (player.energy / 100);
     const moral = 0.9 + 0.2 * (player.moral / 100);
     const form = 1 + (player.form || 0) * 0.02;
-    return base * positionFactor(player, slotPos) * energy * moral * form;
+    const star = player.star ? 1.05 : 1; // craques rendem um pouco mais
+    return base * positionFactor(player, slotPos) * energy * moral * form * star;
   }
 
   function hasTrait(p, t) { return p.traits && p.traits.indexOf(t) >= 0; }

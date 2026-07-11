@@ -94,6 +94,9 @@
     });
   }
 
+  // craque: força de elite (aparece com ⭐ e rende/evolui um pouco mais)
+  function isStar(rating) { return rating >= 88; }
+
   // fator de idade sobre o valor de mercado (prime 24-27 = 1.0)
   function ageValueFactor(age) {
     if (age <= 19) return 1.3;
@@ -171,6 +174,7 @@
         finishing: U.clamp(Math.round(skills.finishing || 50), 1, 100),
         technique: U.clamp(Math.round(skills.technique || 50), 1, 100)
       },
+      star: isStar(rating),
       // estado dinâmico
       energy: 100, moral: 75, form: 0,
       injuryWeeks: 0, suspended: 0, yellow: 0,
@@ -274,5 +278,5 @@
     return world;
   }
 
-  window.TF.world = { buildWorld, POSITIONS, POS_LABEL, valueFor, computeValue, ageValueFactor, wageFor, generatePlayer, normalizePlayer };
+  window.TF.world = { buildWorld, POSITIONS, POS_LABEL, valueFor, computeValue, ageValueFactor, isStar, wageFor, generatePlayer, normalizePlayer };
 })();

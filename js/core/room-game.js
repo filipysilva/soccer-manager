@@ -378,6 +378,7 @@
       else r = s.finishing * 0.4 + s.speed * 0.25 + s.technique * 0.2 + s.playmaking * 0.1 + s.pass * 0.05;
       p.rating = U().clamp(Math.round(r), 1, 99);
       p.value = window.TF.world.computeValue(p);
+      p.star = window.TF.world.isStar(p.rating);
     }
 
     // ---------- janela de transferências ----------
@@ -531,6 +532,7 @@
             recomputeRating(p);
           }
           p.value = window.TF.world.computeValue(p);
+      p.star = window.TF.world.isStar(p.rating);
           p.wage = window.TF.world.wageFor(p.rating, p.age);
           p.contractYears = Math.max(0, p.contractYears - 1);
           if (!isHuman) {
@@ -566,7 +568,7 @@
     function lightPlayer(p) {
       return {
         id: p.id, name: p.name, pos: p.pos, age: p.age, nation: p.nation, foot: p.foot,
-        rating: p.rating, potential: p.potential, value: p.value, wage: p.wage,
+        rating: p.rating, potential: p.potential, value: p.value, wage: p.wage, star: p.star,
         contractYears: p.contractYears, traits: p.traits, forSale: p.forSale, salePrice: p.salePrice || null,
         energy: Math.round(p.energy),
         seasonStats: { games: p.seasonStats.games, goals: p.seasonStats.goals }

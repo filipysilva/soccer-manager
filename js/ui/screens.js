@@ -13,6 +13,7 @@
 
   function esc(s) { return U.esc(s); }
   function money(v) { return U.formatMoney(v); }
+  function star(p) { return p && p.star ? ' <span class="star-mark" title="Craque">⭐</span>' : ""; }
 
   function playerStatusTags(p) {
     let out = "";
@@ -119,7 +120,7 @@
       players.map(p =>
         '<tr data-p="' + p.id + '" style="cursor:pointer">' +
         "<td>" + UI().posBadge(p.pos) + "</td>" +
-        "<td><b>" + esc(p.name) + "</b></td>" +
+        "<td><b>" + esc(p.name) + "</b>" + star(p) + "</td>" +
         '<td class="num">' + p.age + "</td>" +
         "<td>" + (p.foot === "E" ? "Canhoto" : p.foot === "A" ? "Ambidestro" : "Destro") + "</td>" +
         '<td class="num">' + UI().ratingBadge(p.rating) + "</td>" +
@@ -149,7 +150,7 @@
       ["Desarme", sk.tackle], ["Finalização", sk.finishing], ["Técnica", sk.technique]
     ].map(([n, v]) => "<tr><td>" + n + '</td><td class="num">' + Math.round(v) + "</td><td>" + barHtml(v, "var(--accent)") + "</td></tr>").join("");
     UI().modal(
-      "<h3>" + UI().posBadge(p.pos) + " " + esc(p.name) + " " + UI().ratingBadge(p.rating) + "</h3>" +
+      "<h3>" + UI().posBadge(p.pos) + " " + esc(p.name) + star(p) + " " + UI().ratingBadge(p.rating) + "</h3>" +
       '<div class="grid2">' +
         '<div><table class="data">' + skillRows + "</table></div>" +
         "<div>" +
@@ -583,7 +584,7 @@
       "</tr></thead><tbody>" +
       players.map(p =>
         '<tr data-p="' + p.id + '" style="cursor:pointer">' +
-        "<td>" + UI().posBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b></td>" +
+        "<td>" + UI().posBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b>" + star(p) + "</td>" +
         '<td class="num">' + p.age + '</td><td class="num">' + UI().ratingBadge(p.rating) + "</td>" +
         "<td>" + p.traits.map(t => '<span class="trait">' + esc(t) + "</span>").join("") + "</td>" +
         '<td class="num">' + (p.contractYears > 0 ? p.contractYears + " ano(s)" : "<span class='money-neg'>livre</span>") + "</td>" +
@@ -610,7 +611,7 @@
       ["Desarme", sk.tackle], ["Finalização", sk.finishing], ["Técnica", sk.technique]
     ].map(([n, v]) => "<tr><td>" + n + '</td><td class="num">' + Math.round(v) + "</td><td>" + barHtml(v, "var(--accent)") + "</td></tr>").join("");
     UI().modal(
-      "<h3>" + UI().posBadge(p.pos) + " " + esc(p.name) + " " + UI().ratingBadge(p.rating) + "</h3>" +
+      "<h3>" + UI().posBadge(p.pos) + " " + esc(p.name) + star(p) + " " + UI().ratingBadge(p.rating) + "</h3>" +
       '<div class="grid2">' +
         '<div><table class="data">' + skillRows + "</table></div>" +
         "<div>" +
@@ -662,7 +663,7 @@
         "</div></div>" +
         '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>Pos</th><th>Nome</th><th class="num">Idade</th><th class="num">Força</th><th>Características</th><th>Clube</th><th class="num">Valor</th><th></th></tr></thead><tbody>' +
         list.map(({ p, c }) =>
-          "<tr><td>" + UI().posBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b></td><td class='num'>" + p.age + "</td><td class='num'>" + UI().ratingBadge(p.rating) + "</td>" +
+          "<tr><td>" + UI().posBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b>" + star(p) + "</td><td class='num'>" + p.age + "</td><td class='num'>" + UI().ratingBadge(p.rating) + "</td>" +
           "<td>" + p.traits.map(t => '<span class="trait">' + esc(t) + "</span>").join("") + "</td>" +
           '<td><span class="club-cell">' + UI().crestImg(c, 18) + esc(c.shortName) + "</span></td>" +
           "<td class='num'>" + money(T().askingPrice(p, c)) + "</td>" +
@@ -683,7 +684,7 @@
             const p = club.players.find(x => x.id === o.playerId);
             const buyer = world.clubs[o.clubId];
             if (!p || !buyer) return "";
-            return "<tr><td><b>" + esc(p.name) + "</b> " + UI().ratingBadge(p.rating) + '</td><td><span class="club-cell">' + UI().crestImg(buyer, 18) + esc(buyer.name) + "</span></td>" +
+            return "<tr><td><b>" + esc(p.name) + "</b>" + star(p) + " " + UI().ratingBadge(p.rating) + '</td><td><span class="club-cell">' + UI().crestImg(buyer, 18) + esc(buyer.name) + "</span></td>" +
               "<td class='num'><b>" + money(o.value) + "</b></td>" +
               '<td><button class="btn small primary" data-acc="' + i + '">Aceitar</button> <button class="btn small danger" data-rej="' + i + '">Recusar</button></td></tr>';
           }).join("") + "</tbody></table>"
@@ -696,7 +697,7 @@
       free.sort((x, y) => y.p.rating - x.p.rating);
       inner = '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>Pos</th><th>Nome</th><th class="num">Idade</th><th class="num">Força</th><th>Último clube</th><th class="num">Salário pedido</th><th></th></tr></thead><tbody>' +
         free.slice(0, 40).map(({ p, c }) =>
-          "<tr><td>" + UI().posBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b></td><td class='num'>" + p.age + "</td><td class='num'>" + UI().ratingBadge(p.rating) + "</td>" +
+          "<tr><td>" + UI().posBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b>" + star(p) + "</td><td class='num'>" + p.age + "</td><td class='num'>" + UI().ratingBadge(p.rating) + "</td>" +
           "<td>" + esc(c.shortName) + "</td><td class='num'>" + money(T().wageDemand(p, club)) + "/jogo</td>" +
           '<td><button class="btn small" data-offer="' + p.id + '">Contratar</button></td></tr>').join("") +
         "</tbody></table></div>";
