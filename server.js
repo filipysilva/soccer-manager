@@ -121,6 +121,17 @@ function lobbyState(room) {
 
 function pushLobby(room) { broadcast(room, "lobby", lobbyState(room)); }
 
+/* Clubes do país da sala ainda sem técnico humano (para assumir ao entrar no meio do jogo). */
+function freeClubs(room) {
+  if (!room.game) return [];
+  const g = room.game;
+  const country = g.world.countries[g.countryId];
+  const taken = new Set(Object.values(g.humans).map(h => h.clubId));
+  return country.clubIdsA.concat(country.clubIdsB)
+    .filter(id => !taken.has(id))
+    .map(id => ({ id, name: g.world.clubs[id].name, division: g.world.clubs[id].division, rating: g.world.clubs[id].rating, crest: g.world.clubs[id].crest }));
+}
+
 function pushSnapshots(room) {
   if (!room.game) return;
   const snap = room.game.snapshot();
@@ -131,6 +142,7 @@ function pushSnapshots(room) {
 
 // ---------- fluxo da rodada ----------
 function tryAdvance(room) {
+  if (room.frozenForJoin) return; // congelado até novo técnico escolher clube
   if (room.phase !== "manage" || !room.game) return;
   // só contam os técnicos que estão de fato no jogo e conectados
   const online = [...room.players.values()].filter(p => p.sse && room.game.humans[p.id]);
@@ -193,7 +205,7 @@ function startLiveRound(room, r) {
 
 function tickRound(room) {
   const live = room.live;
-  if (!live || live.paused) return; // rodada congelada enquanto alguém gerencia o time
+  if (!live || live.paused || room.frozenForJoin) return; // congelada (gestão ou entrada de técnico)
   const updates = [];
   const newEvents = [];
   let someoneHitHalftime = false;
@@ -266,6 +278,29 @@ function handleAction(room, player, body, respond) {
     const text = String(body.text || "").slice(0, 300);
     if (text) broadcast(room, "chat", { from: player.name, text });
     return respond({ ok: true });
+  }
+  if (t === "freeClubs") {
+    return respond({ ok: true, clubs: freeClubs(room) });
+  }
+  if (t === "joinPick") {
+    // novo técnico que entrou no meio do jogo assume um clube livre
+    if (room.frozenForJoin !== player.id) return respond({ ok: false, reason: "Escolha inválida." });
+    if (player.clubId) return respond({ ok: false, reason: "Você já tem clube." });
+    const free = freeClubs(room).map(c => c.id);
+    if (!free.includes(body.clubId)) return respond({ ok: false, reason: "Clube indisponível." });
+    const r = room.game.addHuman(player.id, player.name, body.clubId);
+    if (!r.ok) return respond({ ok: false, reason: r.reason });
+    player.clubId = body.clubId;
+    room.frozenForJoin = null;
+    broadcast(room, "joinDone", { name: player.name, club: room.game.world.clubs[body.clubId].name });
+    pushSnapshots(room);
+    pushLobby(room);
+    saveRoom(room);
+    return respond({ ok: true });
+  }
+  // enquanto um novo técnico não escolhe clube, ninguém mexe em nada (exceto ele e o chat)
+  if (room.frozenForJoin && room.frozenForJoin !== player.id) {
+    return respond({ ok: false, reason: "Aguardando novo técnico escolher time…" });
   }
   if (t === "setCountry") {
     if (player.id !== room.hostId || room.phase !== "lobby") return respond({ ok: false, reason: "Apenas o dono da sala, no lobby." });
@@ -539,10 +574,18 @@ const server = http.createServer((req, res) => {
       // reconexão
       if (body.playerId && body.token) {
         const existing = auth(room, body.playerId, body.token);
-        if (existing) return json(res, 200, { ok: true, code: room.code, playerId: existing.id, token: existing.token, lobby: lobbyState(room), rejoined: true });
+        if (existing) return json(res, 200, { ok: true, code: room.code, playerId: existing.id, token: existing.token, lobby: lobbyState(room), rejoined: true, inGame: room.phase !== "lobby", needsClub: !existing.clubId && room.phase !== "lobby" });
       }
-      if (room.phase !== "lobby") return json(res, 400, { ok: false, reason: "A sala já está em jogo." });
       if (room.players.size >= 12) return json(res, 400, { ok: false, reason: "Sala cheia." });
+      // entrar no meio do jogo: precisa haver clube livre para assumir
+      if (room.phase !== "lobby") {
+        if (!room.game) return json(res, 400, { ok: false, reason: "A sala ainda não começou." });
+        if (freeClubs(room).length === 0) return json(res, 400, { ok: false, reason: "Não há clubes livres para assumir." });
+        const player = addPlayer(room, body.name);
+        room.frozenForJoin = player.id;              // congela tudo até ele escolher
+        broadcast(room, "joinFreeze", { name: player.name });
+        return json(res, 200, { ok: true, code: room.code, playerId: player.id, token: player.token, lobby: lobbyState(room), inGame: true, needsClub: true });
+      }
       const player = addPlayer(room, body.name);
       pushLobby(room);
       json(res, 200, { ok: true, code: room.code, playerId: player.id, token: player.token, lobby: lobbyState(room) });
@@ -584,6 +627,12 @@ const server = http.createServer((req, res) => {
       clearInterval(ka);
       if (player.sse === res) player.sse = null;
       player.ready = false;
+      // se o técnico que estava escolhendo clube caiu, descongela e remove
+      if (room.frozenForJoin === player.id && !player.clubId) {
+        room.frozenForJoin = null;
+        room.players.delete(player.id);
+        broadcast(room, "joinDone", { name: player.name, aborted: true });
+      }
       pushLobby(room);
     });
     return;

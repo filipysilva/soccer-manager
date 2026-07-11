@@ -155,6 +155,15 @@
       st.live.pausedBy = null;
       hidePausedBanner();
     });
+    es.addEventListener("joinFreeze", e => {
+      const d = JSON.parse(e.data);
+      if (st.view !== "joinPick") showFreezeBanner((d.name || "Um técnico") + " está escolhendo um time para assumir…");
+    });
+    es.addEventListener("joinDone", e => {
+      const d = JSON.parse(e.data);
+      hideFreezeBanner();
+      if (!d.aborted && d.name && d.club) toast(esc(d.name) + " assumiu o " + esc(d.club) + ".");
+    });
     es.addEventListener("roundEnd", e => {
       window.TF.sounds.stopAmbience();
       st.live = null;
@@ -203,10 +212,43 @@
   function render() {
     const app = document.getElementById("app");
     if (st.view === "gate") return renderGate(app);
+    if (st.view === "joinPick") return renderJoinPick(app);
     if (st.view === "lobby") return renderLobby(app);
     if (st.view === "round") return renderRound(app);
     renderGame(app);
   }
+
+  // ---------- entrar no meio do jogo: escolher time livre ----------
+  function renderJoinPick(app) {
+    app.innerHTML = '<div class="content" style="height:100vh;overflow-y:auto"><div style="max-width:900px;margin:0 auto">' +
+      "<h2 style='font-size:1.4rem'>Escolha o time que vai assumir</h2>" +
+      "<p class='muted'>Você entrou na sala <b>" + esc(st.session.code) + "</b> com o jogo em andamento. Enquanto você não escolher, os outros técnicos ficam aguardando.</p>" +
+      '<div class="club-grid" id="jp-clubs"><p class="muted">Carregando clubes livres…</p></div></div></div>';
+    api("freeClubs").then(r => {
+      const grid = $("#jp-clubs");
+      if (!grid) return;
+      if (!r.ok || !r.clubs || !r.clubs.length) { grid.innerHTML = "<p class='muted'>Nenhum clube livre no momento.</p>"; return; }
+      const clubs = r.clubs.slice().sort((a, b) => b.rating - a.rating);
+      grid.innerHTML = clubs.map(c =>
+        '<div class="club-pick" data-club="' + c.id + '">' + crest(c, 34) +
+        '<div><div class="cname">' + esc(c.name) + '</div><div class="cinfo">Série ' + c.division + " · Força " + c.rating + "</div></div></div>").join("");
+      grid.querySelectorAll("[data-club]").forEach(d => d.addEventListener("click", async () => {
+        const res = await api("joinPick", { clubId: d.dataset.club });
+        if (res.ok) { st.view = "game"; render(); }
+        else toast(res.reason || "Falha ao assumir o clube.");
+      }));
+    });
+  }
+
+  function showFreezeBanner(text) {
+    hideFreezeBanner();
+    const el = document.createElement("div");
+    el.id = "join-banner";
+    el.className = "modal-overlay";
+    el.innerHTML = '<div class="modal" style="text-align:center"><h3 style="margin:0">⏸ Aguardando</h3><p class="muted">' + esc(text) + "</p></div>";
+    document.body.appendChild(el);
+  }
+  function hideFreezeBanner() { const b = document.getElementById("join-banner"); if (b) b.remove(); }
 
   function renderGate(app) {
     let saved = null;
@@ -243,7 +285,7 @@
     st.session = { code: r.code, playerId: r.playerId, token: r.token, name };
     try { localStorage.setItem("tf26_online", JSON.stringify(st.session)); } catch (e) { /* ok */ }
     st.lobby = r.lobby;
-    st.view = r.lobby.phase === "lobby" ? "lobby" : "game";
+    st.view = r.needsClub ? "joinPick" : (r.lobby.phase === "lobby" ? "lobby" : "game");
     connectSSE();
     render();
   }
