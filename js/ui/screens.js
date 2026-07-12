@@ -259,29 +259,29 @@
 
     el.innerHTML =
       "<h2>Escalação e táticas</h2>" +
-      '<div class="card"><div class="row">' +
-        '<label>Formação: <select id="sel-form">' + Object.keys(M().FORMATIONS).map(f => '<option' + (f === st.tactics.formationName ? " selected" : "") + ">" + f + "</option>").join("") + "</select></label>" +
-        '<label>Estilo: <select id="sel-style">' +
-          '<option value="equilibrado"' + (st.tactics.style === "equilibrado" ? " selected" : "") + ">Jogo equilibrado</option>" +
-          '<option value="ataque"' + (st.tactics.style === "ataque" ? " selected" : "") + ">Ataque total</option>" +
-          '<option value="retranca"' + (st.tactics.style === "retranca" ? " selected" : "") + ">Contra-ataque (retranca)</option>" +
-        "</select></label>" +
-        '<label>Marcação: <select id="sel-mark">' +
-          '<option value="leve"' + (st.tactics.marking === "leve" ? " selected" : "") + ">Leve</option>" +
-          '<option value="pesada"' + (st.tactics.marking === "pesada" ? " selected" : "") + ">Pesada</option>" +
-          '<option value="muito pesada"' + (st.tactics.marking === "muito pesada" ? " selected" : "") + ">Muito pesada</option>" +
-        "</select></label>" +
-        '<label>Treino da semana: <select id="sel-train">' +
+      '<div class="card"><div class="row" style="align-items:flex-end">' +
+        '<label class="tac-sel"><span class="muted">Formação</span><select id="sel-form">' + window.TF.tactics.FORMATION_NAMES.map(f => "<option" + (f === st.tactics.formationName ? " selected" : "") + ">" + f + "</option>").join("") + "</select></label>" +
+        UI().tacticsSelects(st.tactics) +
+        '<label class="tac-sel"><span class="muted">Treino</span><select id="sel-train">' +
           '<option value="auto"' + (st.training === "auto" ? " selected" : "") + ">Auxiliar decide</option>" +
-          '<option value="principais"' + (st.training === "principais" ? " selected" : "") + ">Habilidades principais</option>" +
-          '<option value="secundarias"' + (st.training === "secundarias" ? " selected" : "") + ">Habilidades secundárias</option>" +
+          '<option value="principais"' + (st.training === "principais" ? " selected" : "") + ">Principais</option>" +
+          '<option value="secundarias"' + (st.training === "secundarias" ? " selected" : "") + ">Secundárias</option>" +
         "</select></label>" +
-        '<button class="btn" id="btn-auto">Escalar automaticamente</button>' +
-      "</div></div>" +
+        '<button class="btn" id="btn-auto">Escalar auto</button>' +
+      "</div>" +
+      '<div id="tac-info" style="margin-top:10px"></div>' +
+      "</div>" +
       '<div class="lineup-wrap">' +
         '<div class="pitch" id="pitch"><div class="center-line"></div><div class="center-circle"></div></div>' +
         '<div><div class="card" id="setpieces-card"></div><div class="card mb0" id="bench-card"></div></div>' +
       "</div>";
+
+    function refreshTacInfo() {
+      const team = G_.userTeam();
+      el.querySelector("#tac-info").innerHTML =
+        UI().tacticWarningsHtml(team) +
+        '<details class="tac-desc"><summary class="muted" style="cursor:pointer;font-size:.82rem">Ver o que cada escolha faz</summary>' + UI().tacticsDescriptions(st.tactics) + "</details>";
+    }
 
     function drawPitch() {
       const pitch = el.querySelector("#pitch");
@@ -398,8 +398,10 @@
       G_.autoLineup();
       S.lineup(el);
     });
-    el.querySelector("#sel-style").addEventListener("change", e => { st.tactics.style = e.target.value; });
-    el.querySelector("#sel-mark").addEventListener("change", e => { st.tactics.marking = e.target.value; });
+    el.querySelectorAll("[data-tac]").forEach(sel => sel.addEventListener("change", e => {
+      st.tactics[e.target.dataset.tac] = e.target.value;
+      refreshTacInfo();
+    }));
     el.querySelector("#sel-train").addEventListener("change", e => { st.training = e.target.value; });
     el.querySelector("#btn-auto").addEventListener("click", () => { G_.autoLineup(); S.lineup(el); });
 
@@ -407,6 +409,7 @@
     drawPitch();
     drawBench();
     drawSetPieces();
+    refreshTacInfo();
   };
 
   // ---------------- CLASSIFICAÇÃO ----------------

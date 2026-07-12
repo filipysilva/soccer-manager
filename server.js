@@ -16,6 +16,7 @@ require("./js/db/world-db-2026.js");
 require("./js/db/world-leagues.js");
 require("./js/core/world.js");
 require("./js/core/competitions.js");
+require("./js/core/tactics.js");
 require("./js/core/match.js");
 require("./js/core/finance.js");
 require("./js/core/transfers.js");
@@ -90,6 +91,14 @@ function broadcast(room, event, data) {
   for (const p of room.players.values()) sseSend(p, event, data);
 }
 
+/* Aplica dimensões táticas válidas de `body` no objeto de tática. */
+function applyTacticDims(tactics, body) {
+  const DIM = TF.tactics.DIMENSIONS;
+  for (const k of Object.keys(DIM)) {
+    if (body[k] != null && DIM[k].options.some(o => o[0] === body[k])) tactics[k] = body[k];
+  }
+}
+
 /* Escalação serializada para a tela de gestão online. */
 function serializeLineup(team) {
   const P = p => p ? { id: p.id, name: p.name, pos: p.pos, rating: p.rating, energy: Math.round(p.energy) } : null;
@@ -99,7 +108,8 @@ function serializeLineup(team) {
     bench: team.bench.map(P),
     subsUsed: team.subsUsed || 0,
     captainId: team.captainId || null,
-    setPieces: team.setPieces || {}
+    setPieces: team.setPieces || {},
+    tactics: TF.tactics.normalize(team.tactics || {})
   };
 }
 
@@ -370,8 +380,7 @@ function handleAction(room, player, body, respond) {
         game.autoLineupFor(h);
       }
     }
-    if (["equilibrado", "ataque", "retranca"].includes(body.style)) h.tactics.style = body.style;
-    if (["leve", "pesada", "muito pesada"].includes(body.marking)) h.tactics.marking = body.marking;
+    applyTacticDims(h.tactics, body); // aceita as novas dimensões táticas
     if (["auto", "principais", "secundarias"].includes(body.training)) h.training = body.training;
     return respond({ ok: true, squad: h.squad });
   }
@@ -464,9 +473,11 @@ function handleAction(room, player, body, respond) {
       return respond({ ok: true });
     }
     if (t === "liveTactics") {
-      if (["equilibrado", "ataque", "retranca"].includes(body.style)) team.tactics.style = body.style;
-      if (["leve", "pesada", "muito pesada"].includes(body.marking)) team.tactics.marking = body.marking;
-      return respond({ ok: true });
+      if (body.formationName && TF.match.FORMATIONS[body.formationName] && body.formationName !== team.formationName) {
+        TF.match.reformTeam(team, body.formationName);
+      }
+      applyTacticDims(team.tactics, body);
+      return respond(Object.assign({ ok: true }, body.formationName ? { lineup: serializeLineup(team) } : {}));
     }
     // ready2h
     live.halftimeWaiting.delete(player.id);

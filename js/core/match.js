@@ -3,25 +3,11 @@
    time (defesa, meio, ataque), habilidades individuais, características, tática e moral. */
 (function () {
   const U = window.TF.util;
+  const TAC = window.TF.tactics;
 
-  const FORMATIONS = {
-    "4-4-2": ["GOL", "LD", "ZAG", "ZAG", "LE", "VOL", "MC", "MC", "MEI", "ATA", "ATA"],
-    "4-3-3": ["GOL", "LD", "ZAG", "ZAG", "LE", "VOL", "MC", "MEI", "PD", "PE", "ATA"],
-    "4-5-1": ["GOL", "LD", "ZAG", "ZAG", "LE", "VOL", "VOL", "MC", "MC", "MEI", "ATA"],
-    "3-5-2": ["GOL", "ZAG", "ZAG", "ZAG", "LD", "LE", "VOL", "MC", "MEI", "ATA", "ATA"],
-    "5-4-1": ["GOL", "LD", "ZAG", "ZAG", "ZAG", "LE", "VOL", "VOL", "MC", "MEI", "ATA"],
-    "4-2-4": ["GOL", "LD", "ZAG", "ZAG", "LE", "MC", "MC", "PD", "PE", "ATA", "ATA"]
-  };
-
-  // coordenadas (x%, y%) de cada slot para desenhar no campo (y: 0 = gol próprio)
-  const FORMATION_COORDS = {
-    "4-4-2": [[50, 6], [85, 24], [62, 20], [38, 20], [15, 24], [50, 42], [68, 52], [32, 52], [50, 64], [62, 84], [38, 84]],
-    "4-3-3": [[50, 6], [85, 24], [62, 20], [38, 20], [15, 24], [50, 42], [62, 54], [38, 58], [82, 76], [18, 76], [50, 86]],
-    "4-5-1": [[50, 6], [85, 24], [62, 20], [38, 20], [15, 24], [62, 40], [38, 40], [72, 54], [28, 54], [50, 64], [50, 86]],
-    "3-5-2": [[50, 6], [70, 18], [50, 16], [30, 18], [88, 40], [12, 40], [50, 38], [62, 54], [42, 62], [62, 84], [38, 84]],
-    "5-4-1": [[50, 6], [88, 26], [68, 18], [50, 16], [32, 18], [12, 26], [62, 42], [38, 42], [58, 56], [42, 62], [50, 86]],
-    "4-2-4": [[50, 6], [85, 24], [62, 20], [38, 20], [15, 24], [60, 44], [40, 44], [82, 76], [18, 76], [62, 88], [38, 88]]
-  };
+  // formações e coordenadas vêm do módulo tático (orientado a dados, 15 formações)
+  const FORMATIONS = TAC.FORMATION_SLOTS;      // nome -> [slotPos x11]
+  const FORMATION_COORDS = TAC.FORMATION_COORDS;
 
   const COMPAT = { // grupos de posições parecidas (improvisação leve)
     GOL: ["GOL"], ZAG: ["ZAG", "VOL"], LD: ["LD", "LE", "PD"], LE: ["LE", "LD", "PE"],
@@ -90,16 +76,12 @@
     def = defN ? def / defN : 30;
     mid = midN ? mid / midN : 30;
     att = attN ? att / attN : 30;
-
-    // estilo de jogo
-    if (tactics.style === "ataque") { att *= 1.18; mid *= 1.05; def *= 0.82; }
-    else if (tactics.style === "retranca") { att *= 0.85; def *= 1.18; mid *= 0.92; }
     return { gk, def, mid, att, aerialAtt, aerialDef };
   }
 
   function starters(lineup) { return lineup.filter(s => s.player); }
 
-  function pickShooter(lineup, rng, headed) {
+  function pickShooter(lineup, rng, headed, origin, isThrough) {
     const cands = starters(lineup).filter(s => s.slotPos !== "GOL");
     const weights = cands.map(s => {
       let w = Math.pow(effSkill(s.player, "finishing", s.slotPos), 2);
@@ -108,6 +90,13 @@
       else if (["ZAG", "VOL"].includes(s.slotPos) && headed) w *= 1.5;
       else w *= 0.4;
       if (headed && hasTrait(s.player, "Cabeceio")) w *= 2.2;
+      // setor de origem: a jogada envolve mais quem está naquele lado
+      if (origin === "left" && ["PE", "LE"].includes(s.slotPos)) w *= 1.7;
+      else if (origin === "right" && ["PD", "LD"].includes(s.slotPos)) w *= 1.7;
+      else if (origin === "center" && ["MEI", "MC", "ATA"].includes(s.slotPos)) w *= 1.4;
+      // bola em profundidade favorece quem tem velocidade
+      if (isThrough && hasTrait(s.player, "Velocidade")) w *= 1.8;
+      if (isThrough && ["ATA", "PD", "PE"].includes(s.slotPos)) w *= 1.3;
       return w;
     });
     return weightedPick(cands, weights, rng);
@@ -147,18 +136,43 @@
     const rng = opts.rng || U.RNG.next.bind(U.RNG);
     const grassBad = opts.grass === "Ruim" || opts.grass === "Péssimo";
     const events = [];
+    function blankStats() {
+      return {
+        shots: 0, target: 0, corners: 0, fouls: 0, poss: 0,
+        attCenter: 0, attLeft: 0, attRight: 0, crosses: 0, crossGoals: 0,
+        longBalls: 0, through: 0, counters: 0, aerials: 0, recov: 0
+      };
+    }
     const state = {
       gh: 0, ga: 0, minute: 0,
-      stats: { h: { shots: 0, target: 0, corners: 0, fouls: 0, poss: 0 }, a: { shots: 0, target: 0, corners: 0, fouls: 0, poss: 0 } },
+      stats: { h: blankStats(), a: blankStats() },
       ratings: new Map(), // player -> nota acumulada
-      out: new Set() // expulsos/lesionados sem substituição
+      out: new Set(), // expulsos/lesionados sem substituição
+      hints: { h: {}, a: {} } // controle de mensagens táticas já emitidas
     };
 
     const sides = [
-      { key: "h", team: homeTeam, other: null },
-      { key: "a", team: awayTeam, other: null }
+      { key: "h", team: homeTeam, other: null, lev: null },
+      { key: "a", team: awayTeam, other: null, lev: null }
     ];
     sides[0].other = sides[1]; sides[1].other = sides[0];
+
+    function refreshLevers() {
+      for (const s of sides) {
+        let tactics = s.team.tactics;
+        if (s.team.ai) {
+          tactics = TAC.reactTactics(tactics, {
+            minute: state.minute,
+            myGoals: s.key === "h" ? state.gh : state.ga,
+            oppGoals: s.key === "h" ? state.ga : state.gh,
+            avgEnergy: avgEnergy(s),
+            redCard: !!s.redCard
+          });
+        }
+        s.lev = TAC.resolve({ tactics: tactics });
+      }
+    }
+    refreshLevers();
 
     for (const s of sides) for (const slot of starters(s.team.lineup)) {
       state.ratings.set(slot.player.id, 5.5 + rng() * 0.8);
@@ -175,6 +189,9 @@
 
     function strengths(s) {
       const st = teamStrength(s.team.lineup, s.team.tactics, grassBad);
+      const lev = s.lev, oppLev = s.other.lev;
+      // alavancas táticas: forças de setor
+      st.def *= lev.defMult; st.mid *= lev.midMult; st.att *= lev.attMult;
       if (s.key === "h" && opts.homeAdv !== false) { st.mid *= 1.14; st.att *= 1.1; st.def *= 1.07; }
       // capitão em campo lidera o time (experiência e qualidade contam)
       const capId = s.team.captainId;
@@ -186,10 +203,10 @@
           st.def *= boost; st.mid *= boost; st.att *= boost;
         }
       }
-      // marcação adversária pesada reduz criação
-      const oppMark = s.other.team.tactics.marking;
-      if (oppMark === "pesada") st.att *= 0.94;
-      else if (oppMark === "muito pesada") st.att *= 0.87;
+      // pressão adversária alta atrapalha quem constrói curto (troca de passes sob pressão)
+      if (oppLev.pressing > 0 && lev.directness < 0.5) st.att *= 1 - oppLev.pressing * 0.06 * (0.5 - lev.directness) / 0.5;
+      // pressão adversária alta também abre espaço nas costas dela para este time explorar
+      st.possMid = st.mid * lev.possMult; // meio "efetivo" para partilha de posse
       return st;
     }
 
@@ -201,45 +218,100 @@
       return slot || null;
     }
 
-    function attemptGoal(att, min) {
+    function pickOrigin(lev) {
+      const total = lev.attCenterW + lev.attLeftW + lev.attRightW;
+      let r = rng() * total;
+      if ((r -= lev.attCenterW) < 0) return "center";
+      if ((r -= lev.attLeftW) < 0) return "left";
+      return "right";
+    }
+
+    function attemptGoal(att, min, isCounter, fromPress) {
       const def = att.other;
+      const lev = att.lev, defLev = def.lev;
       const stA = strengths(att), stD = strengths(def);
-      const headed = rng() < 0.22;
-      const shooter = pickShooter(att.team.lineup, rng, headed);
+      const stat = state.stats[att.key];
+
+      const origin = pickOrigin(lev);
+      if (origin === "center") stat.attCenter++; else if (origin === "left") stat.attLeft++; else stat.attRight++;
+
+      // tipo de jogada
+      const wingPlay = origin !== "center";
+      const isLong = !isCounter && rng() < lev.longBall;
+      const isThrough = !isLong && (isCounter || rng() < lev.directness * 0.5) && rng() < 0.6; // profundidade
+      const isCross = !isLong && wingPlay && rng() < (0.25 + lev.crossFreq * 0.4);
+      let headed = false;
+      if (isCross) headed = rng() < 0.35 + lev.crossHigh * 0.4;
+      else if (isLong) headed = rng() < 0.5;
+      else headed = rng() < 0.14;
+
+      if (isLong) stat.longBalls++;
+      if (isThrough) stat.through++;
+      if (isCross) stat.crosses++;
+      if (headed) stat.aerials++;
+      if (isCounter) stat.counters++;
+
+      const shooter = pickShooter(att.team.lineup, rng, headed, origin, isThrough);
       if (!shooter || !shooter.player) return;
-      const finish = effSkill(shooter.player, "finishing", shooter.slotPos) + (headed && hasTrait(shooter.player, "Cabeceio") ? 12 : 0);
+      const finish = effSkill(shooter.player, "finishing", shooter.slotPos)
+        + (headed && hasTrait(shooter.player, "Cabeceio") ? 12 : 0)
+        + (isThrough && hasTrait(shooter.player, "Velocidade") ? 8 : 0);
       const gkSlot = def.team.lineup[0];
       const gkSkill = gkSlot && gkSlot.player ? effSkill(gkSlot.player, "gk", "GOL") : 25;
 
-      state.stats[att.key].shots++;
-      // chance clara?
-      const create = (stA.att + stA.mid * 0.4) / ((stA.att + stA.mid * 0.4) + (stD.def * 1.35 + gkSkill * 0.35));
+      stat.shots++;
+      // qualidade da chance
+      let attPower = stA.att + stA.mid * (isLong ? 0.15 : 0.4);
+      if (isCross) attPower += stA.aerialAtt * 0.5;
+      let defPower = stD.def * 1.35 + gkSkill * 0.35;
+      if (isCounter) defPower *= 1 - defLev.spaceBehind * 0.5;        // contra-ataque explora espaço atrás
+      if (isThrough) defPower *= 1 - defLev.spaceBehind * 0.35;       // profundidade contra linha alta
+      if (fromPress) attPower *= 1.15;                                // erro forçado pela pressão
+      let create = attPower / (attPower + defPower);
+      create *= lev.chanceQual;
+
       if (rng() > create * 1.12) {
         if (rng() < 0.4) {
-          state.stats[att.key].corners++;
-          const side = rng() < 0.5 ? "esquerda" : "direita";
+          const side = origin === "left" ? "esquerda" : origin === "right" ? "direita" : (rng() < 0.5 ? "esquerda" : "direita");
+          stat.corners++;
           const taker = designated(att.team, side === "esquerda" ? "cornerLeft" : "cornerRight");
-          log(min, "corner", "Escanteio pela " + side + " para " + att.team.club.name +
-            (taker ? " — " + taker.player.name + " na cobrança" : "") + ".", att);
-          let takerBonus = 0;
-          if (taker) {
-            takerBonus = (effSkill(taker.player, "pass", taker.slotPos) - 60) * 0.0012 +
-              (hasTrait(taker.player, "Cruzamento") ? 0.05 : 0);
-          }
+          log(min, "corner", "Escanteio pela " + side + " para " + att.team.club.name + (taker ? " — " + taker.player.name + " na cobrança" : "") + ".", att);
+          let takerBonus = taker ? (effSkill(taker.player, "pass", taker.slotPos) - 60) * 0.0012 + (hasTrait(taker.player, "Cruzamento") ? 0.05 : 0) : 0;
           if (rng() < 0.16 + stA.aerialAtt * 0.004 + takerBonus) return attemptCornerGoal(att, min, taker);
         } else {
-          log(min, "chance", (headed ? "Cabeçada" : "Finalização") + " de " + shooter.player.name + " para fora!", att);
+          const how = isCross ? "após cruzamento" : isLong ? "no lançamento" : isCounter ? "no contra-ataque" : "";
+          log(min, "chance", (headed ? "Cabeçada" : "Finalização") + " de " + shooter.player.name + (how ? " " + how : "") + " para fora!", att);
         }
         return;
       }
-      state.stats[att.key].target++;
+      stat.target++;
       const pGoal = U.clamp(finish / (finish + gkSkill * 2.4), 0.08, 0.62);
       if (rng() < pGoal) {
-        goal(att, shooter, min, headed ? "de cabeça" : null);
+        const how = headed ? "de cabeça" : isCounter ? "em contra-ataque" : isLong ? "após lançamento" : null;
+        goal(att, shooter, min, how, false, isCross);
       } else {
         addRating(gkSlot && gkSlot.player, 0.25);
         log(min, "save", "Defesa do goleiro " + (gkSlot && gkSlot.player ? gkSlot.player.name : "") + "! Chute de " + shooter.player.name + ".", att);
       }
+    }
+
+    /* Mensagens táticas ocasionais (percepção dos efeitos das escolhas). */
+    function maybeHint(min) {
+      if (min < 12 || rng() > 0.06) return;
+      for (const s of sides) {
+        const st = state.stats[s.key], h = state.hints[s.key];
+        const atksWide = st.attLeft + st.attRight, atksC = st.attCenter;
+        if (!h.side && atksWide >= 5 && st.attLeft > st.attRight * 1.8) { h.side = 1; return log(min, "hint", "Seu time está encontrando espaços pela esquerda.", s); }
+        if (!h.side && atksWide >= 5 && st.attRight > st.attLeft * 1.8) { h.side = 1; return log(min, "hint", "As jogadas estão saindo mais pela direita.", s); }
+        if (!h.press && s.lev.pressing > 0 && state.stats[s.key].recov >= 3) { h.press = 1; return log(min, "hint", "A pressão alta está forçando erros do adversário.", s); }
+        if (!h.behind && s.other.lev.counter > 0.4 && s.lev.spaceBehind > 0.45 && st.attCenter + atksWide > 8) { h.behind = 1; return log(min, "hint", "Cuidado: os laterais estão deixando espaços nas costas.", s); }
+        if (!h.tired && avgEnergy(s) < 55) { h.tired = 1; return log(min, "hint", "O time demonstra cansaço pelo ritmo intenso.", s); }
+        if (!h.cross && st.crosses >= 6 && st.crossGoals === 0 && s.lev.crossHigh > 0.6) { h.cross = 1; return log(min, "hint", "Os cruzamentos altos não estão funcionando.", s); }
+      }
+    }
+    function avgEnergy(s) {
+      const xi = starters(s.team.lineup);
+      return xi.length ? xi.reduce((a, sl) => a + sl.player.energy, 0) / xi.length : 100;
     }
 
     function attemptCornerGoal(att, min, taker) {
@@ -260,8 +332,9 @@
       }
     }
 
-    function goal(att, shooter, min, how, skipAssist) {
+    function goal(att, shooter, min, how, skipAssist, isCross) {
       if (att.key === "h") state.gh++; else state.ga++;
+      if (isCross) state.stats[att.key].crossGoals++;
       const assister = !skipAssist && rng() < 0.7 ? pickAssister(att.team.lineup, rng, shooter.player) : null;
       shooter.player.seasonStats.goals++;
       shooter.player.matchGoals = (shooter.player.matchGoals || 0) + 1;
@@ -278,14 +351,15 @@
       const fouler = pickFouler(def.team.lineup, rng);
       if (!fouler) return;
       const foulerPlayer = fouler.player;
-      const mark = def.team.tactics.marking;
-      const cardChance = mark === "muito pesada" ? 0.3 : mark === "pesada" ? 0.2 : 0.12;
+      // pressão alta e mentalidade defensiva provocam mais faltas e cartões
+      const cardChance = U.clamp(0.13 * def.lev.foulMult, 0.08, 0.34);
       if (rng() < cardChance) {
         const p = foulerPlayer;
         p.matchYellow = (p.matchYellow || 0) + 1;
         if (p.matchYellow >= 2 || rng() < 0.05) {
           log(min, "red", "CARTÃO VERMELHO! " + p.name + " (" + def.team.club.name + ") está expulso!", def);
           removePlayer(def, fouler);
+          def.redCard = true;
           p.suspended = Math.max(p.suspended, p.matchYellow >= 2 ? 1 : 2);
           addRating(p, -1.5);
         } else {
@@ -450,8 +524,9 @@
       if (state.pendingPenalty || state.pendingInjury) return; // aguardando decisão do técnico
       if (phase === "halftime") phase = "second";
       clock++;
+      refreshLevers(); // pega mudanças táticas ao vivo
       const m = state.minute = phase === "first" ? Math.min(clock, 45) : Math.min(45 + (clock - endFirstHalf), 90);
-      // desgaste realista: idade pesa muito, resistência ajuda, velocistas gastam mais
+      // desgaste: idade pesa muito, resistência ajuda, velocistas gastam mais, tática influencia
       for (const s of sides) for (const slot of starters(s.team.lineup)) {
         const p = slot.player;
         let drain = 0.34;
@@ -461,33 +536,51 @@
         else if (p.age >= 32) drain *= 1.28;
         else if (p.age >= 30) drain *= 1.12;
         if (hasTrait(p, "Resistência")) drain *= 0.65;
-        if (hasTrait(p, "Velocidade")) drain *= 1.12; // jogo explosivo cansa mais
-        if (s.team.tactics.style === "ataque") drain *= 1.12;
-        if (s.team.tactics.marking === "muito pesada") drain *= 1.1;
-        p.energy = Math.max(20, p.energy - drain);
+        if (hasTrait(p, "Velocidade")) drain *= 1.12;
+        drain *= s.lev.energyMult; // ritmo, pressão, mentalidade, laterais
+        // laterais/pontas que sobem gastam ainda mais
+        if ((slot.slotPos === "LD" || slot.slotPos === "LE") && s.lev.crossFreq > 0.9) drain *= 1.1;
+        p.energy = Math.max(15, p.energy - drain);
       }
 
       const stH = strengths(sides[0]), stA = strengths(sides[1]);
-      const total = Math.pow(stH.mid, 1.25) + Math.pow(stA.mid, 1.25);
-      const hShare = Math.pow(stH.mid, 1.25) / total;
+      const total = Math.pow(stH.possMid, 1.25) + Math.pow(stA.possMid, 1.25);
+      const hShare = Math.pow(stH.possMid, 1.25) / total;
       state.stats.h.poss += hShare; state.stats.a.poss += 1 - hShare;
 
+      // volume de ataque de cada lado depende da posse e da mentalidade/ritmo
+      const volH = hShare * sides[0].lev.chanceVol, volA = (1 - hShare) * sides[1].lev.chanceVol;
+      const attRate = 0.135 * (volH + volA);
       const r = rng();
-      if (r < 0.135) {
-        const att = rng() < hShare ? sides[0] : sides[1];
-        // retranca: menos volume, mais contra-ataques efetivos
-        if (att.team.tactics.style === "retranca" && rng() < 0.35) {
-          log(m, "counter", "Contra-ataque rápido de " + att.team.club.name + "!", att);
+      if (r < attRate) {
+        const att = rng() * (volH + volA) < volH ? sides[0] : sides[1];
+        attemptGoal(att, m, false);
+        maybeHint(m);
+      } else if (r < attRate + 0.06) {
+        // tentativa de contra-ataque: quem tem foco em contra-ataque explora o espaço do rival
+        for (const att of sides) {
+          const def = att.other;
+          if (rng() < att.lev.counter * (0.4 + def.lev.spaceBehind) * 0.5) {
+            attemptGoal(att, m, true);
+            break;
+          }
         }
-        attemptGoal(att, m);
-      } else if (r < 0.21) {
-        const def = rng() < 0.5 ? sides[0] : sides[1];
+      } else if (r < attRate + 0.06 + 0.075) {
+        const fh = sides[0].lev.foulMult, fa = sides[1].lev.foulMult;
+        const def = rng() * (fh + fa) < fh ? sides[0] : sides[1];
         foulEvent(def, m);
-      } else if (r < 0.2128) {
+      } else if (r < attRate + 0.06 + 0.078) {
         const att = rng() < hShare ? sides[0] : sides[1];
         penaltyEvent(att, m);
-      } else if (r < 0.2163) {
+      } else if (r < attRate + 0.06 + 0.0815) {
         injuryEvent(rng() < 0.5 ? sides[0] : sides[1], m);
+      }
+      // pressão alta: chance de recuperar a bola no ataque e forçar erro do adversário
+      for (const s of sides) {
+        if (s.lev.highRecovery > 0.2 && rng() < (s.lev.highRecovery - 0.2) * 0.12) {
+          state.stats[s.key].recov++;
+          if (rng() < 0.4) attemptGoal(s, m, false, true);
+        }
       }
 
       if (phase === "first" && clock >= endFirstHalf) {
@@ -537,6 +630,23 @@
       return { ok: true };
     }
 
+    /* Relatório tático de um lado (setores, cruzamentos, bolas longas, contra-ataques...). */
+    function sideReport(key) {
+      const st = state.stats[key], me = key === "h" ? sides[0] : sides[1];
+      const wide = st.attLeft + st.attRight, tot = st.attCenter + wide || 1;
+      let mainSector = st.attCenter >= wide ? "meio" : (st.attLeft > st.attRight ? "esquerda" : "direita");
+      return {
+        setorPrincipal: mainSector,
+        ataquesMeio: Math.round(100 * st.attCenter / tot),
+        ataquesEsquerda: Math.round(100 * st.attLeft / tot),
+        ataquesDireita: Math.round(100 * st.attRight / tot),
+        cruzamentos: st.crosses, golsDeCruzamento: st.crossGoals,
+        bolasLongas: st.longBalls, profundidade: st.through,
+        contraAtaques: st.counters, recuperacaoAlta: st.recov, aereas: st.aerials,
+        cansaco: Math.round(avgEnergy(me)),
+        formacao: me.lev.formationName
+      };
+    }
     function result() {
       const totalPoss = state.stats.h.poss + state.stats.a.poss || 1;
       return {
@@ -544,7 +654,8 @@
         stats: {
           h: { ...state.stats.h, poss: Math.round(100 * state.stats.h.poss / totalPoss) },
           a: { ...state.stats.a, poss: Math.round(100 * state.stats.a.poss / totalPoss) }
-        }
+        },
+        report: { h: sideReport("h"), a: sideReport("a") }
       };
     }
 

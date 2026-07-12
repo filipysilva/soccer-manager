@@ -45,7 +45,7 @@
     }
     state.season = C().buildSeasonCalendar(world, U.RNG.next.bind(U.RNG));
     state.coach = { name: coachName, clubId, reputation: 50, points: 0, titles: [], history: [] };
-    state.tactics = { formationName: M().bestFormationFor(world.clubs[clubId]), style: "equilibrado", marking: "leve" };
+    state.tactics = window.TF.tactics.defaultTactics(window.TF.tactics.bestFormation(world.clubs[clubId]));
     autoLineup();
     state.training = "auto";
     state.news = [];
@@ -116,7 +116,7 @@
     const sp = state.setPieces || {};
     return {
       club, lineup, bench,
-      tactics: { style: state.tactics.style, marking: state.tactics.marking },
+      tactics: window.TF.tactics.normalize(state.tactics),
       captainId: sp.captain || null,
       setPieces: { freeKick: sp.freeKick || null, cornerLeft: sp.cornerLeft || null, cornerRight: sp.cornerRight || null },
       subsUsed: 0
@@ -124,8 +124,9 @@
   }
 
   function aiTeam(club) {
-    const picked = M().pickLineup(club, M().bestFormationFor(club));
-    return { club, lineup: picked.lineup, bench: picked.bench.slice(), tactics: { style: "equilibrado", marking: "leve" }, subsUsed: 0 };
+    const tactics = window.TF.tactics.aiTactics(club);
+    const picked = M().pickLineup(club, tactics.formationName);
+    return { club, lineup: picked.lineup, bench: picked.bench.slice(), tactics, ai: true, subsUsed: 0 };
   }
 
   function resetMatchFlags(club) {
@@ -612,7 +613,8 @@
         if (p.star === undefined) p.star = window.TF.world.isStar(p.rating);
       }
     }
-    state.season = data.season; state.coach = data.coach; state.tactics = data.tactics;
+    state.season = data.season; state.coach = data.coach;
+    state.tactics = window.TF.tactics.normalize(data.tactics); // migra saves antigos p/ o novo sistema tático
     state.userSquad = data.userSquad; state.training = data.training; state.news = data.news || [];
     state.aiOffers = data.aiOffers || []; state.week = data.week || 1;
     state.pendingBids = data.pendingBids || [];

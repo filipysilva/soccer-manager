@@ -193,36 +193,35 @@
     function onFieldPlayers() { return userTeam.lineup.map(s => s.player).filter(Boolean); }
 
     function renderManageTactics() {
-      const t = userTeam.tactics;
       const box = manageOverlay.querySelector("#m-tactics");
-      const seg = (name, key, current, opts) =>
-        '<div class="seg-row"><span class="muted" style="min-width:64px;font-size:.8rem">' + name + "</span>" +
-        opts.map(([v, l]) => '<button class="btn small seg' + (current === v ? " primary" : "") + '" data-tac="' + key + '" data-val="' + v + '">' + l + "</button>").join("") + "</div>";
       const players = onFieldPlayers();
       const sp = userTeam.setPieces || {};
       const opts = (sel, allowGk) => players.filter(p => allowGk || p.pos !== "GOL")
         .map(p => '<option value="' + p.id + '"' + (p.id === sel ? " selected" : "") + ">" + esc(p.name) + " (" + p.pos + ")</option>").join("");
       box.innerHTML =
-        '<div class="seg-row"><span class="muted" style="min-width:64px;font-size:.8rem">Formação</span>' +
-          '<select id="m-form">' + Object.keys(M().FORMATIONS).map(f => "<option" + (f === formationName ? " selected" : "") + ">" + f + "</option>").join("") + "</select></div>" +
-        seg("Estilo", "style", t.style, [["equilibrado", "Equilibrado"], ["ataque", "Ataque total"], ["retranca", "Retranca"]]) +
-        seg("Marcação", "marking", t.marking, [["leve", "Leve"], ["pesada", "Pesada"], ["muito pesada", "Muito pesada"]]) +
+        '<div class="row" style="align-items:flex-end;gap:6px">' +
+          '<label class="tac-sel"><span class="muted">Formação</span><select id="m-form">' + window.TF.tactics.FORMATION_NAMES.map(f => "<option" + (f === formationName ? " selected" : "") + ">" + f + "</option>").join("") + "</select></label>" +
+          UI().tacticsSelects(userTeam.tactics) +
+        "</div>" +
+        '<div id="m-tac-warn" style="margin-top:6px"></div>' +
         '<div class="set-pieces"><div class="sp-item"><span>👑 Capitão</span><select data-sp="captain">' + opts(userTeam.captainId, true) + "</select></div>" +
           '<div class="sp-item"><span>🎯 Faltas</span><select data-sp="freeKick">' + opts(sp.freeKick) + "</select></div>" +
           '<div class="sp-item"><span>◀ Esc. esq.</span><select data-sp="cornerLeft">' + opts(sp.cornerLeft) + "</select></div>" +
           '<div class="sp-item"><span>▶ Esc. dir.</span><select data-sp="cornerRight">' + opts(sp.cornerRight) + "</select></div></div>";
+      box.querySelector("#m-tac-warn").innerHTML = UI().tacticWarningsHtml(userTeam);
 
       box.querySelector("#m-form").addEventListener("change", e => {
         formationName = e.target.value;
+        userTeam.tactics.formationName = formationName;
         M().reformTeam(userTeam, formationName);
         if (G().state.tactics) G().state.tactics.formationName = formationName;
         manageSel = null;
         renderManageTactics(); renderManagePitch(); renderManageSide();
       });
-      box.querySelectorAll("[data-tac]").forEach(b => b.addEventListener("click", () => {
-        userTeam.tactics[b.dataset.tac] = b.dataset.val;
-        renderManageTactics();
-        UI().toast("Tática aplicada.");
+      box.querySelectorAll("[data-tac]").forEach(b => b.addEventListener("change", () => {
+        userTeam.tactics[b.dataset.tac] = b.value;
+        if (G().state.tactics) G().state.tactics[b.dataset.tac] = b.value; // persiste p/ próxima partida
+        box.querySelector("#m-tac-warn").innerHTML = UI().tacticWarningsHtml(userTeam);
       }));
       box.querySelectorAll("[data-sp]").forEach(sel => sel.addEventListener("change", e => {
         const key = e.target.dataset.sp;
@@ -330,6 +329,7 @@
       let html = soundHtml();
       if (allDone) {
         html += '<button class="btn primary" id="c-done">Continuar ▶</button>' +
+          '<button class="btn" id="c-report">📊 Resumo tático</button>' +
           '<button class="btn" id="c-ratings">Notas</button>';
       } else if (userHalf && !timer) {
         html += '<button class="btn primary" id="c-2half">▶ Iniciar 2º tempo</button>' +
@@ -351,6 +351,7 @@
       bind("#c-2half", () => { userGame.match.resumeSecondHalf(); S().play("kickoff"); play(); });
       bind("#c-done", finishAndContinue);
       bind("#c-ratings", ratingsModal);
+      bind("#c-report", reportModal);
       const sp = $controls.querySelector("#c-speed");
       if (sp) sp.addEventListener("change", ev => { speed = parseInt(ev.target.value, 10); if (timer) { stopTimer(); startTimer(); } });
     }
@@ -453,6 +454,33 @@
             play();
           }));
         });
+    }
+
+    function reportModal() {
+      const g = games[selectedIdx];
+      const rep = g.match.result().report;
+      const row = (label, hv, av) => '<div class="rh">' + hv + '</div><div class="rname">' + label + '</div><div class="ra">' + av + "</div>";
+      function block(r) {
+        return "Formação <b>" + esc(r.formacao) + "</b> · setor principal: <b>" + r.setorPrincipal + "</b>";
+      }
+      UI().modal(
+        "<h3>📊 Resumo tático</h3>" +
+        '<div class="grid2" style="margin-bottom:8px"><div class="muted">' + esc(g.entry.home.club.name) + ": " + block(rep.h) + "</div>" +
+        '<div class="muted" style="text-align:right">' + esc(g.entry.away.club.name) + ": " + block(rep.a) + "</div></div>" +
+        '<div class="report-grid">' +
+          row("Ataques pelo meio", rep.h.ataquesMeio + "%", rep.a.ataquesMeio + "%") +
+          row("Ataques pela esquerda", rep.h.ataquesEsquerda + "%", rep.a.ataquesEsquerda + "%") +
+          row("Ataques pela direita", rep.h.ataquesDireita + "%", rep.a.ataquesDireita + "%") +
+          row("Cruzamentos", rep.h.cruzamentos, rep.a.cruzamentos) +
+          row("Bolas longas", rep.h.bolasLongas, rep.a.bolasLongas) +
+          row("Jogadas em profundidade", rep.h.profundidade, rep.a.profundidade) +
+          row("Contra-ataques", rep.h.contraAtaques, rep.a.contraAtaques) +
+          row("Bolas aéreas", rep.h.aereas, rep.a.aereas) +
+          row("Recuperações no ataque", rep.h.recuperacaoAlta, rep.a.recuperacaoAlta) +
+          row("Energia no fim", rep.h.cansaco + "%", rep.a.cansaco + "%") +
+        "</div>" +
+        '<div class="actions"><button class="btn" data-x>Fechar</button></div>',
+        ov => ov.querySelector("[data-x]").addEventListener("click", () => ov.remove()));
     }
 
     function ratingsModal() {

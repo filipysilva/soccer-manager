@@ -502,6 +502,22 @@
   function footLabel(p) { return p.foot === "E" ? "Canhoto" : p.foot === "A" ? "Ambidestro" : "Destro"; }
   function star(p) { return p && p.star ? ' <span class="star-mark" title="Craque">⭐</span>' : ""; }
 
+  // painel tático (mesmo do offline, adaptado ao cliente online)
+  const TAC = () => window.TF.tactics;
+  function tacticsSelects(t) {
+    const D = TAC().DIMENSIONS;
+    return Object.keys(D).map(k => '<label class="tac-sel"><span class="muted">' + D[k].label + '</span><select data-tac="' + k + '">' +
+      D[k].options.map(o => '<option value="' + o[0] + '"' + (t[k] === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>").join("") + "</select></label>").join("");
+  }
+  function tacticsDescriptions(t) {
+    const D = TAC().DIMENSIONS;
+    return Object.keys(D).map(k => { const o = D[k].options.find(x => x[0] === t[k]); return o && o[2] ? "<div><b>" + esc(o[1]) + ":</b> <span class='muted'>" + esc(o[2]) + "</span></div>" : ""; }).filter(Boolean).join("");
+  }
+  function tacticWarningsHtml(team) {
+    const ws = TAC().warnings(team);
+    return ws.length ? '<div class="tac-warn">' + ws.map(w => "⚠ " + esc(w)).join("<br>") + "</div>" : "";
+  }
+
   function drawSquad(el, club) {
     const order = ["GOL", "ZAG", "LD", "LE", "VOL", "MC", "MEI", "PD", "PE", "ATA"];
     const players = club.players.slice().sort((a, b) => order.indexOf(a.pos) - order.indexOf(b.pos) || b.rating - a.rating);
@@ -610,17 +626,23 @@
     for (const p of club.players) byId[p.id] = p;
     let selSlot = null; // índice do slot selecionado no campo
 
+    const tn = TAC().normalize(t);
     el.innerHTML =
       "<h2>Escalação e táticas</h2>" +
-      '<div class="card"><div class="row">' +
-        '<label>Formação: <select id="sl-form">' + Object.keys(M.FORMATIONS).map(f => "<option" + (f === t.formationName ? " selected" : "") + ">" + f + "</option>").join("") + "</select></label>" +
-        '<label>Estilo: <select id="sl-style">' + [["equilibrado", "Equilibrado"], ["ataque", "Ataque total"], ["retranca", "Retranca"]].map(([v, l]) => '<option value="' + v + '"' + (t.style === v ? " selected" : "") + ">" + l + "</option>").join("") + "</select></label>" +
-        '<label>Marcação: <select id="sl-mark">' + [["leve", "Leve"], ["pesada", "Pesada"], ["muito pesada", "Muito pesada"]].map(([v, l]) => '<option value="' + v + '"' + (t.marking === v ? " selected" : "") + ">" + l + "</option>").join("") + "</select></label>" +
-        '<label>Treino: <select id="sl-train">' + [["auto", "Auxiliar decide"], ["principais", "Principais"], ["secundarias", "Secundárias"]].map(([v, l]) => '<option value="' + v + '"' + (st.personal.training === v ? " selected" : "") + ">" + l + "</option>").join("") + "</select></label>" +
-        '<button class="btn" id="sl-auto">Escalar automaticamente</button>' +
-      "</div></div>" +
+      '<div class="card"><div class="row" style="align-items:flex-end">' +
+        '<label class="tac-sel"><span class="muted">Formação</span><select id="sl-form">' + TAC().FORMATION_NAMES.map(f => "<option" + (f === t.formationName ? " selected" : "") + ">" + f + "</option>").join("") + "</select></label>" +
+        tacticsSelects(tn) +
+        '<label class="tac-sel"><span class="muted">Treino</span><select id="sl-train">' + [["auto", "Auxiliar decide"], ["principais", "Principais"], ["secundarias", "Secundárias"]].map(([v, l]) => '<option value="' + v + '"' + (st.personal.training === v ? " selected" : "") + ">" + l + "</option>").join("") + "</select></label>" +
+        '<button class="btn" id="sl-auto">Escalar auto</button>' +
+      '</div><div id="sl-tacinfo" style="margin-top:10px"></div></div>' +
       '<div class="lineup-wrap"><div class="pitch" id="pitch"><div class="center-line"></div><div class="center-circle"></div></div>' +
       '<div><div class="card" id="sl-setpieces"></div><div class="card mb0" id="sl-avail"></div></div></div>';
+
+    function refreshTacInfo() {
+      const team = { lineup: st.personal.squad.starters.map((id, i) => ({ slotPos: formation[i], player: id ? byId[id] : null })), tactics: TAC().normalize(t) };
+      $("#sl-tacinfo").innerHTML = tacticWarningsHtml(team) +
+        '<details class="tac-desc"><summary class="muted" style="cursor:pointer;font-size:.82rem">Ver o que cada escolha faz</summary>' + tacticsDescriptions(TAC().normalize(t)) + "</details>";
+    }
 
     function starterPlayers() { return st.personal.squad.starters.map(id => id ? byId[id] : null); }
 
@@ -710,14 +732,17 @@
       st.personal.tactics.formationName = e.target.value;
       drawTab(el);
     });
-    $("#sl-style").addEventListener("change", e => api("tactics", { style: e.target.value }));
-    $("#sl-mark").addEventListener("change", e => api("tactics", { marking: e.target.value }));
+    el.querySelectorAll("[data-tac]").forEach(sel => sel.addEventListener("change", e => {
+      st.personal.tactics[e.target.dataset.tac] = e.target.value;
+      api("tactics", { [e.target.dataset.tac]: e.target.value });
+      refreshTacInfo();
+    }));
     $("#sl-train").addEventListener("change", e => api("tactics", { training: e.target.value }));
     $("#sl-auto").addEventListener("click", async () => {
       const r = await api("autoLineup");
       if (r.squad) { st.personal.squad = r.squad; selSlot = null; drawPitch(); drawAvail(); drawSetPieces(); }
     });
-    drawPitch(); drawSetPieces(); drawAvail();
+    drawPitch(); drawSetPieces(); drawAvail(); refreshTacInfo();
   }
 
   function drawTable(el) {
@@ -1031,7 +1056,7 @@
       st._managing = true;
       const mL = r.lineup;
       let sel = null;
-      const t = { style: st.personal.tactics.style, marking: st.personal.tactics.marking };
+      const t = TAC().normalize(mL.tactics || st.personal.tactics);
       const ov = document.createElement("div");
       ov.className = "modal-overlay manage-overlay";
       ov.innerHTML =
@@ -1051,13 +1076,11 @@
 
       function drawTac() {
         const opt = (selId, gkOk) => onField().filter(p => gkOk || p.pos !== "GOL").map(p => '<option value="' + p.id + '"' + (p.id === selId ? " selected" : "") + ">" + esc(p.name) + " (" + p.pos + ")</option>").join("");
-        const seg = (name, key, cur, opts) => '<div class="seg-row"><span class="muted" style="min-width:64px;font-size:.8rem">' + name + "</span>" +
-          opts.map(([v, l]) => '<button class="btn small seg' + (cur === v ? " primary" : "") + '" data-tac="' + key + '" data-val="' + v + '">' + l + "</button>").join("") + "</div>";
         ov.querySelector("#lm-tac").innerHTML =
-          '<div class="seg-row"><span class="muted" style="min-width:64px;font-size:.8rem">Formação</span><select id="lm-form">' +
-            Object.keys(M.FORMATIONS).map(f => "<option" + (f === mL.formationName ? " selected" : "") + ">" + f + "</option>").join("") + "</select></div>" +
-          seg("Estilo", "style", t.style, [["equilibrado", "Equilibrado"], ["ataque", "Ataque total"], ["retranca", "Retranca"]]) +
-          seg("Marcação", "marking", t.marking, [["leve", "Leve"], ["pesada", "Pesada"], ["muito pesada", "Muito pesada"]]) +
+          '<div class="row" style="align-items:flex-end;gap:6px">' +
+            '<label class="tac-sel"><span class="muted">Formação</span><select id="lm-form">' + TAC().FORMATION_NAMES.map(f => "<option" + (f === mL.formationName ? " selected" : "") + ">" + f + "</option>").join("") + "</select></label>" +
+            tacticsSelects(t) +
+          "</div>" +
           '<div class="set-pieces"><div class="sp-item"><span>👑 Capitão</span><select data-lsp="captain">' + opt(mL.captainId, true) + "</select></div>" +
             '<div class="sp-item"><span>🎯 Faltas</span><select data-lsp="freeKick">' + opt(mL.setPieces.freeKick) + "</select></div>" +
             '<div class="sp-item"><span>◀ Esc. esq.</span><select data-lsp="cornerLeft">' + opt(mL.setPieces.cornerLeft) + "</select></div>" +
@@ -1066,8 +1089,8 @@
           const r2 = await api("liveReform", { formation: e.target.value });
           if (r2.lineup) { Object.assign(mL, r2.lineup); sel = null; drawTac(); drawPitch(); drawSide(); }
         });
-        ov.querySelectorAll("[data-tac]").forEach(b => b.addEventListener("click", async () => {
-          t[b.dataset.tac] = b.dataset.val; await api("liveTactics", { style: t.style, marking: t.marking }); drawTac();
+        ov.querySelectorAll("[data-tac]").forEach(b => b.addEventListener("change", async () => {
+          t[b.dataset.tac] = b.value; await api("liveTactics", { [b.dataset.tac]: b.value });
         }));
         ov.querySelectorAll("[data-lsp]").forEach(s => s.addEventListener("change", async e => {
           const key = e.target.dataset.lsp;

@@ -267,6 +267,19 @@ tr.sug-row td { background: color-mix(in srgb, var(--green) 12%, transparent); }
 tr.sug-row td:first-child { box-shadow: inset 3px 0 0 var(--green); }
 .star-mark { font-size: .82em; filter: drop-shadow(0 0 2px rgba(251,191,36,.5)); }
 
+/* ---------- painel tático ---------- */
+.tac-sel { display: inline-flex; flex-direction: column; gap: 2px; }
+.tac-sel > span { font-size: .7rem; text-transform: uppercase; letter-spacing: .03em; }
+.tac-sel select { padding: 5px 8px; font-size: .84rem; }
+.tac-warn { background: color-mix(in srgb, var(--red) 12%, transparent); border: 1px solid color-mix(in srgb, var(--red) 40%, transparent); color: var(--text); border-radius: 8px; padding: 7px 10px; font-size: .82rem; margin-bottom: 8px; }
+.tac-desc { margin-top: 6px; }
+.tac-desc > div { font-size: .82rem; padding: 2px 0; }
+.tac-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.ev.hint { color: var(--accent); font-style: italic; }
+.report-grid { display: grid; grid-template-columns: 1fr auto 1fr; gap: 4px 14px; font-size: .88rem; }
+.report-grid .rname { color: var(--muted); text-align: center; }
+.report-grid .rh { text-align: right; } .report-grid .ra { text-align: left; }
+
 /* ---------- partida ao vivo ---------- */
 .match-screen { max-width: 900px; margin: 0 auto; }
 .scoreboard {

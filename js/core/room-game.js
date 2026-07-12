@@ -40,7 +40,7 @@
       if (humanByClub(clubId)) return { ok: false, reason: "Clube já escolhido por outro técnico." };
       const h = {
         id: playerId, name, clubId,
-        tactics: { formationName: M().bestFormationFor(club), style: "equilibrado", marking: "leve" },
+        tactics: window.TF.tactics.defaultTactics(window.TF.tactics.bestFormation(club)),
         squad: null, training: "auto", setPieces: null,
         news: [], offers: [], humanOffers: [] // humanOffers: propostas de outros técnicos pelos meus jogadores
       };
@@ -107,7 +107,7 @@
       const sp = h.setPieces || {};
       return {
         club, lineup, bench,
-        tactics: { style: h.tactics.style, marking: h.tactics.marking },
+        tactics: window.TF.tactics.normalize(h.tactics),
         formationName: h.tactics.formationName,
         captainId: sp.captain || null,
         setPieces: { freeKick: sp.freeKick || null, cornerLeft: sp.cornerLeft || null, cornerRight: sp.cornerRight || null },
@@ -116,8 +116,9 @@
     }
 
     function aiTeam(club) {
-      const picked = M().pickLineup(club, M().bestFormationFor(club));
-      return { club, lineup: picked.lineup, bench: picked.bench.slice(), tactics: { style: "equilibrado", marking: "leve" }, subsUsed: 0 };
+      const tactics = window.TF.tactics.aiTactics(club);
+      const picked = M().pickLineup(club, tactics.formationName);
+      return { club, lineup: picked.lineup, bench: picked.bench.slice(), tactics, ai: true, subsUsed: 0 };
     }
 
     function teamForClub(clubId) {

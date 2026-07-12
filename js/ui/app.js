@@ -151,5 +151,28 @@
     render();
   }
 
-  window.TF.ui = { boot, goto, render, advance, toast, modal, crestImg, ratingBadge, ratingClass, posBadge, esc, screens: ui.screens, state: ui, toggleTheme, currentTheme };
+  // ---------- painel tático reutilizável (offline) ----------
+  function tacticsSelects(t) {
+    const D = window.TF.tactics.DIMENSIONS;
+    return Object.keys(D).map(k => {
+      const dim = D[k];
+      return '<label class="tac-sel"><span class="muted">' + dim.label + "</span><select data-tac=\"" + k + "\">" +
+        dim.options.map(o => '<option value="' + o[0] + '"' + (t[k] === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>").join("") +
+        "</select></label>";
+    }).join("");
+  }
+  function tacticsDescriptions(t) {
+    const D = window.TF.tactics.DIMENSIONS;
+    const rows = Object.keys(D).map(k => {
+      const o = D[k].options.find(x => x[0] === t[k]);
+      return o && o[2] ? "<div><b>" + esc(o[1]) + ":</b> <span class='muted'>" + esc(o[2]) + "</span></div>" : "";
+    }).filter(Boolean).join("");
+    return rows;
+  }
+  function tacticWarningsHtml(team) {
+    const ws = window.TF.tactics.warnings(team);
+    return ws.length ? '<div class="tac-warn">' + ws.map(w => "⚠ " + esc(w)).join("<br>") + "</div>" : "";
+  }
+
+  window.TF.ui = { boot, goto, render, advance, toast, modal, crestImg, ratingBadge, ratingClass, posBadge, esc, screens: ui.screens, state: ui, toggleTheme, currentTheme, tacticsSelects, tacticsDescriptions, tacticWarningsHtml };
 })();
