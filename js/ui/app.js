@@ -51,6 +51,7 @@
     { group: "Competição", items: [
       { id: "table", icon: "🏆", label: "Classificação" },
       { id: "cup", icon: "🏅", label: "Copa" },
+      { id: "ranking", icon: "🎖️", label: "Ranking" },
       { id: "calendar", icon: "📅", label: "Jogos" },
       { id: "clubs", icon: "🏟️", label: "Clubes" }
     ] },

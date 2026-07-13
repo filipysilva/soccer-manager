@@ -503,6 +503,49 @@
     el.querySelector("#sel-cup").addEventListener("change", e => { S._cupCountry = e.target.value; S.cup(el); });
   };
 
+  // ---------------- RANKING DE TÉCNICOS (§16/§25) ----------------
+  function aiCoachName(club) {
+    const rng = U.createRng(U.hashString(club.id + "|coachname"));
+    return window.TF.names.randomName(club.nation || club.countryId, rng);
+  }
+  S.ranking = function (el) {
+    const st = G().state;
+    const world = st.world;
+    const club = G().userClub();
+    const cid = S._rankCountry || club.countryId;
+    const country = world.countries[cid];
+    const ids = (country.clubIdsA || []).concat(country.clubIdsB || []);
+    // prestígio: força do elenco + títulos conquistados (peso por competição)
+    function prestige(c) {
+      let p = Math.max(0, c.rating - 50);
+      for (const t of (c.titles || [])) {
+        p += t.name === country.leagueNameA ? 25 : t.name === country.cupName ? 18 : t.name === country.leagueNameB ? 8 : 12;
+      }
+      return Math.round(p);
+    }
+    const rows = ids.map(id => {
+      const c = world.clubs[id];
+      const isUser = id === club.id;
+      return { c, isUser, name: isUser ? st.coach.name : aiCoachName(c), titles: (c.titles || []).length, points: prestige(c) + (isUser ? Math.round((st.coach.points || 0) * 0.1) : 0) };
+    }).sort((a, b) => b.points - a.points || b.titles - a.titles);
+
+    el.innerHTML =
+      "<h2>Ranking de técnicos</h2>" +
+      '<div class="card"><div class="row"><select id="rk-c">' +
+        Object.values(world.countries).map(co => '<option value="' + co.id + '"' + (co.id === cid ? " selected" : "") + ">" + esc(co.name) + "</option>").join("") +
+      "</select></div></div>" +
+      '<div class="card scroll-x mb0"><table class="data"><thead><tr>' +
+        "<th>#</th><th>Técnico</th><th>Clube</th><th class='num'>Títulos</th><th class='num'>Prestígio</th>" +
+      "</tr></thead><tbody>" +
+      rows.map((r, i) =>
+        '<tr class="' + (r.isUser ? "me" : "") + '"><td>' + (i + 1) + "º</td>" +
+          "<td><b>" + esc(r.name) + "</b></td>" +
+          '<td><span class="club-cell">' + UI().crestImg(r.c, 18) + esc(r.c.shortName || r.c.name) + "</span></td>" +
+          '<td class="num">' + r.titles + '</td><td class="num"><b>' + r.points + "</b></td></tr>").join("") +
+      "</tbody></table></div>";
+    el.querySelector("#rk-c").addEventListener("change", e => { S._rankCountry = e.target.value; S.ranking(el); });
+  };
+
   // ---------------- VISÃO GERAL (Dashboard) ----------------
   // Reúne os próximos 10 jogos do usuário a partir do calendário da temporada.
   function upcomingFor(st, club, limit) {
