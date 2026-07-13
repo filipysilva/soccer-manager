@@ -43,6 +43,7 @@
   // §22 menu agrupado
   const NAV_GROUPS = [
     { group: "Meu time", items: [
+      { id: "dashboard", icon: "🏠", label: "Visão geral" },
       { id: "squad", icon: "👥", label: "Elenco" },
       { id: "lineup", icon: "📋", label: "Escalação" },
       { id: "coach", icon: "🎩", label: "Técnico" }

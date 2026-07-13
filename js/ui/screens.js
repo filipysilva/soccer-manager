@@ -45,7 +45,7 @@
     const bc = el.querySelector("#btn-continue");
     if (bc) bc.addEventListener("click", () => {
       const r = G().load(1);
-      if (r.ok) UI().goto("squad"); else UI().toast(r.reason);
+      if (r.ok) UI().goto("dashboard"); else UI().toast(r.reason);
     });
     el.querySelector("#btn-new").addEventListener("click", () => UI().goto("newCareer"));
     el.querySelector("#btn-online").addEventListener("click", () => { window.location.href = "online.html"; });
@@ -96,7 +96,7 @@
               ov.remove();
               G().newCareer(name, d.dataset.club);
               G().save(1);
-              UI().goto("squad");
+              UI().goto("dashboard");
               UI().toast("Bem-vindo ao " + clubName + "!");
             });
           });
@@ -487,6 +487,102 @@
     }
     el.innerHTML = html;
     el.querySelector("#sel-cup").addEventListener("change", e => { S._cupCountry = e.target.value; S.cup(el); });
+  };
+
+  // ---------------- VISÃO GERAL (Dashboard) ----------------
+  // Reúne os próximos 10 jogos do usuário a partir do calendário da temporada.
+  function upcomingFor(st, club, limit) {
+    const world = st.world;
+    const league = st.season.leagues[club.countryId][club.division];
+    const out = [];
+    for (let i = st.season.slotIndex; i < st.season.slots.length && out.length < limit; i++) {
+      const slot = st.season.slots[i];
+      if (slot.type === "league") {
+        const round = league.rounds[slot.round];
+        if (!round) continue;
+        const f = round.find(([h, a]) => h === club.id || a === club.id);
+        if (f) out.push({ comp: league.name, sub: U.formatRoundLabel(slot), home: f[0], away: f[1], isHome: f[0] === club.id });
+      } else if (slot.type === "cup") {
+        const cup = st.season.cups[club.countryId];
+        const cupName = world.countries[club.countryId].cupName;
+        if (cup.phase === slot.phase && !cup.championId) {
+          const t = cup.ties.find(t => t.home === club.id || t.away === club.id);
+          if (t) out.push({ comp: cupName, sub: cup.phaseName, home: t.home, away: t.away, isHome: t.home === club.id });
+        } else if (!cup.championId && slot.phase >= cup.phase) {
+          out.push({ comp: cupName, sub: C().CUP_PHASES[slot.phase] || "", home: null, away: null });
+        }
+      }
+    }
+    return out;
+  }
+
+  S.dashboard = function (el) {
+    const st = G().state;
+    const world = st.world;
+    const club = G().userClub();
+    const league = st.season.leagues[club.countryId][club.division];
+    const upcoming = upcomingFor(st, club, 10);
+    const sorted = C().sortTable(league.table);
+    const myPos = sorted.findIndex(r => r.clubId === club.id) + 1;
+    const myRow = sorted[myPos - 1] || { pts: 0, j: 0, v: 0, e: 0, d: 0 };
+    const wageBill = club.players.reduce((a, p) => a + (p.wage || 0), 0);
+    const next = upcoming[0];
+
+    // hero do próximo jogo
+    let heroHtml = '<div class="dash-hero card"><div class="muted">Sem jogos futuros nesta temporada.</div></div>';
+    if (next) {
+      const h = next.home ? world.clubs[next.home] : null;
+      const a = next.away ? world.clubs[next.away] : null;
+      heroHtml = '<div class="dash-hero card">' +
+        '<div class="dh-comp">' + esc(next.comp) + '<span class="muted"> · ' + esc(next.sub || "") + "</span></div>" +
+        (h && a ?
+          '<div class="dh-teams">' +
+            '<div class="dh-team">' + UI().crestImg(h, 46) + "<span>" + esc(h.shortName || h.name) + "</span></div>" +
+            '<div class="dh-vs">' + (next.isHome ? "casa" : "fora") + "</div>" +
+            '<div class="dh-team">' + UI().crestImg(a, 46) + "<span>" + esc(a.shortName || a.name) + "</span></div>" +
+          "</div>"
+          : '<div class="muted" style="padding:12px 0">Aguardando sorteio / classificação.</div>') +
+        '<button class="btn primary" id="dash-play">Jogar ▶</button>' +
+        "</div>";
+    }
+
+    const nextList = upcoming.slice(1, 10).map(u => {
+      const opp = u.home ? world.clubs[u.isHome ? u.away : u.home] : null;
+      return '<tr><td class="muted" style="font-size:.76rem">' + esc(u.comp) + "<div>" + esc(u.sub || "") + "</div></td>" +
+        (opp ? '<td><span class="club-cell">' + UI().crestImg(opp, 18) + esc(opp.shortName || opp.name) + "</span></td><td class='muted' style='text-align:right'>" + (u.isHome ? "casa" : "fora") + "</td>"
+          : '<td colspan="2" class="muted">a definir</td>') + "</tr>";
+    }).join("");
+
+    const news = (st.news || []).slice(0, 5).map(n =>
+      '<div class="dash-news ' + esc(n.type) + '"><div class="dn-title">' + esc(n.title) + '</div><div class="muted">' + esc(n.text) + "</div></div>").join("") || '<div class="muted">Sem notícias.</div>';
+
+    el.innerHTML =
+      "<h2>Visão geral</h2>" +
+      '<div class="dash-grid">' +
+        '<div class="dash-col">' +
+          heroHtml +
+          '<div class="card"><h3 style="margin-top:0">Próximos jogos</h3><table class="data"><tbody>' +
+            (nextList || '<tr><td class="muted">Nada agendado.</td></tr>') + '</tbody></table>' +
+            '<button class="btn" id="dash-cal" style="margin-top:8px">Ver calendário completo</button></div>' +
+        '</div>' +
+        '<div class="dash-col">' +
+          '<div class="card dash-quick"><h3 style="margin-top:0">Sua situação</h3>' +
+            '<div class="dq-grid">' +
+              '<div class="dq"><div class="dq-v">' + (myPos || "-") + 'º</div><div class="dq-l">na ' + esc(league.name) + '</div></div>' +
+              '<div class="dq"><div class="dq-v">' + myRow.pts + '</div><div class="dq-l">pontos</div></div>' +
+              '<div class="dq"><div class="dq-v">' + myRow.v + "/" + myRow.e + "/" + myRow.d + '</div><div class="dq-l">V/E/D</div></div>' +
+              '<div class="dq"><div class="dq-v ' + (club.money < 0 ? "money-neg" : "") + '">' + U.formatMoney(club.money) + '</div><div class="dq-l">caixa</div></div>' +
+              '<div class="dq"><div class="dq-v">' + Math.round(club.moralTorcida) + '%</div><div class="dq-l">torcida</div></div>' +
+              '<div class="dq"><div class="dq-v">' + U.formatMoney(wageBill) + '</div><div class="dq-l">folha/rodada</div></div>' +
+            '</div></div>' +
+          '<div class="card"><h3 style="margin-top:0">Notícias recentes</h3>' + news +
+            '<button class="btn" id="dash-news" style="margin-top:8px">Todas as notícias</button></div>' +
+        '</div>' +
+      '</div>';
+
+    const bPlay = el.querySelector("#dash-play"); if (bPlay) bPlay.addEventListener("click", () => UI().advance());
+    el.querySelector("#dash-cal").addEventListener("click", () => UI().goto("calendar"));
+    el.querySelector("#dash-news").addEventListener("click", () => UI().goto("news"));
   };
 
   // ---------------- JOGOS / CALENDÁRIO ----------------
