@@ -23,6 +23,7 @@
     week: 1,
     pendingLiveRound: null,
     lastRoundResults: null,
+    matchLog: [],         // §26 histórico dos jogos do usuário na temporada
     started: false
   };
 
@@ -50,6 +51,7 @@
     state.training = "auto";
     state.news = [];
     state.aiOffers = [];
+    state.matchLog = [];
     state.week = 1;
     state.started = true;
     addNews("Bem-vindo ao " + userClub().name + "!",
@@ -229,6 +231,9 @@
             const res = resolveFixture(h, a, provided, "league");
             C().applyResult(league.table, h, a, res.gh, res.ga);
             results.push({ competition: cid + " " + div, home: h, away: a, gh: res.gh, ga: res.ga });
+            if (h === state.coach.clubId || a === state.coach.clubId) {
+              state.matchLog.push({ kind: "league", comp: league.name, round: slot.round + 1, home: h, away: a, gh: res.gh, ga: res.ga });
+            }
           }
           league.currentRound = slot.round + 1;
         }
@@ -255,6 +260,9 @@
           cup.results.push({ ...tie });
           cup.winners.push(winner);
           results.push({ competition: cid + " Copa", home: tie.home, away: tie.away, gh: res.gh, ga: res.ga, winner, shootout: tie.shootout || null });
+          if (tie.home === state.coach.clubId || tie.away === state.coach.clubId) {
+            state.matchLog.push({ kind: "cup", comp: state.world.countries[cid].cupName, round: cup.phaseName, home: tie.home, away: tie.away, gh: res.gh, ga: res.ga, winner, shootout: tie.shootout || null });
+          }
           // avisa o técnico quando a vaga saiu nos pênaltis envolvendo o seu clube
           if (tie.penalties && (tie.home === state.coach.clubId || tie.away === state.coach.clubId)) {
             const meWon = winner === state.coach.clubId;
@@ -591,6 +599,7 @@
     // nova temporada
     world.season++;
     state.season = C().buildSeasonCalendar(world, U.RNG.next.bind(U.RNG));
+    state.matchLog = []; // §26 zera o histórico de jogos da temporada anterior
     state.coach.history.push({ year: report.year, club: userClub().name });
     addNews("Nova temporada: " + world.season, "Patrocínio creditado. Boa sorte!", "board");
     autoLineup();
@@ -604,7 +613,8 @@
       world: { ...state.world, players: undefined },
       season: state.season, coach: state.coach, tactics: state.tactics,
       userSquad: state.userSquad, training: state.training, news: state.news,
-      aiOffers: state.aiOffers, pendingBids: state.pendingBids, week: state.week, setPieces: state.setPieces
+      aiOffers: state.aiOffers, pendingBids: state.pendingBids, week: state.week, setPieces: state.setPieces,
+      matchLog: state.matchLog
     };
     try {
       localStorage.setItem(SAVE_KEY + (slot || 1), JSON.stringify(data));
@@ -632,6 +642,7 @@
     state.tactics = window.TF.tactics.normalize(data.tactics); // migra saves antigos p/ o novo sistema tático
     state.userSquad = data.userSquad; state.training = data.training; state.news = data.news || [];
     state.aiOffers = data.aiOffers || []; state.week = data.week || 1;
+    state.matchLog = data.matchLog || [];
     state.pendingBids = data.pendingBids || [];
     state.setPieces = data.setPieces || null;
     state.pendingLiveRound = null;

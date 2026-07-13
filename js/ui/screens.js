@@ -647,54 +647,39 @@
     const st = G().state;
     const world = st.world;
     const club = G().userClub();
-    const league = st.season.leagues[club.countryId][club.division];
+    const upcoming = upcomingFor(st, club, 30);
+    const log = st.matchLog || [];
 
-    // últimos resultados globais
-    let lastHtml = "";
-    if (st.lastRoundResults && st.lastRoundResults.length) {
-      const mine = st.lastRoundResults.filter(r => r.competition.startsWith(club.countryId));
-      lastHtml = '<div class="card"><h3 style="margin-top:0">Última rodada (' + esc(club.countryId) + ')</h3><table class="data"><tbody>' +
-        mine.slice(0, 24).map(r => {
-          const h = world.clubs[r.home], a = world.clubs[r.away];
-          if (!h || !a) return "";
-          const me = r.home === club.id || r.away === club.id;
-          return "<tr" + (me ? ' class="me"' : "") + '><td class="muted">' + esc(r.competition) + '</td><td><span class="club-cell">' + UI().crestImg(h, 18) + esc(h.shortName) + "</span></td>" +
-            "<td style='text-align:center'><b>" + r.gh + " x " + r.ga + "</b></td>" +
-            '<td><span class="club-cell">' + UI().crestImg(a, 18) + esc(a.shortName) + "</span></td></tr>";
-        }).join("") + "</tbody></table></div>";
+    function resultBadge(m) {
+      const isHome = m.home === club.id;
+      const gf = isHome ? m.gh : m.ga, ga = isHome ? m.ga : m.gh;
+      let r = gf > ga ? "V" : gf < ga ? "D" : "E";
+      if (m.kind === "cup" && gf === ga && m.winner) r = m.winner === club.id ? "V" : "D"; // disputa
+      return '<span class="res-badge res-' + r + '">' + r + "</span>";
+    }
+    function fixtureRow(comp, sub, homeId, awayId, scoreHtml, badge) {
+      const h = homeId ? world.clubs[homeId] : null, a = awayId ? world.clubs[awayId] : null;
+      const compCell = '<td class="muted cal-comp">' + esc(comp) + "<div>" + esc(sub || "") + "</div></td>";
+      if (!h || !a) return "<tr>" + compCell + '<td colspan="4" class="muted">a definir (sorteio / classificação)</td></tr>';
+      const mineH = homeId === club.id, mineA = awayId === club.id;
+      return "<tr>" + compCell +
+        '<td class="cal-h' + (mineH ? " me-cell" : "") + '"><span class="club-cell" style="justify-content:flex-end">' + esc(h.shortName || h.name) + UI().crestImg(h, 18) + "</span></td>" +
+        '<td class="cal-score">' + scoreHtml + "</td>" +
+        '<td class="cal-a' + (mineA ? " me-cell" : "") + '"><span class="club-cell">' + UI().crestImg(a, 18) + esc(a.shortName || a.name) + "</span></td>" +
+        "<td>" + (badge || "") + "</td></tr>";
     }
 
-    // próximos jogos do usuário
-    const upcoming = [];
-    for (let i = st.season.slotIndex; i < st.season.slots.length && upcoming.length < 8; i++) {
-      const slot = st.season.slots[i];
-      if (slot.type === "league") {
-        const round = league.rounds[slot.round];
-        if (!round) continue;
-        const f = round.find(([h, a]) => h === club.id || a === club.id);
-        if (f) upcoming.push({ label: league.name, sub: "Rodada " + (slot.round + 1), home: f[0], away: f[1] });
-      } else if (slot.type === "cup") {
-        const cup = st.season.cups[club.countryId];
-        const cupName = world.countries[club.countryId].cupName;
-        if (cup.phase === slot.phase && !cup.championId) {
-          const t = cup.ties.find(t => t.home === club.id || t.away === club.id);
-          if (t) upcoming.push({ label: cupName, sub: cup.phaseName, home: t.home, away: t.away });
-        } else if (!cup.championId && slot.phase >= cup.phase) {
-          upcoming.push({ label: cupName, sub: C().CUP_PHASES[slot.phase] || "", home: null, away: null });
-        }
-      }
-    }
+    const playedRows = log.map(m => {
+      const pen = m.shootout ? ' <span class="muted" style="font-size:.72rem">(' + m.shootout.scoreH + "-" + m.shootout.scoreA + " pên)</span>" : "";
+      return fixtureRow(m.comp, m.kind === "cup" ? m.round : "Rodada " + m.round, m.home, m.away, "<b>" + m.gh + " x " + m.ga + "</b>" + pen, resultBadge(m));
+    }).join("");
+    const upcomingRows = upcoming.map(u => fixtureRow(u.comp, u.sub, u.home, u.away, '<span class="muted">x</span>', "")).join("");
 
-    el.innerHTML =
-      "<h2>Jogos</h2>" +
-      '<div class="card"><h3 style="margin-top:0">Próximos compromissos</h3><table class="data"><tbody>' +
-      (upcoming.length ? upcoming.map(u => {
-        const compCell = '<td><b>' + esc(u.label) + '</b><div class="muted" style="font-size:.76rem">' + esc(u.sub || "") + "</div></td>";
-        if (!u.home) return "<tr>" + compCell + '<td colspan="3" class="muted">aguardando sorteio / classificação</td></tr>';
-        const h = world.clubs[u.home], a = world.clubs[u.away];
-        return "<tr>" + compCell + '<td><span class="club-cell">' + UI().crestImg(h, 18) + esc(h.name) + "</span></td><td style='text-align:center'>x</td><td><span class=\"club-cell\">" + UI().crestImg(a, 18) + esc(a.name) + "</span></td></tr>";
-      }).join("") : '<tr><td class="muted">Sem jogos futuros nesta temporada.</td></tr>') +
-      "</tbody></table></div>" + lastHtml;
+    el.innerHTML = "<h2>Calendário</h2>" +
+      '<div class="card scroll-x"><h3 style="margin-top:0">Resultados</h3>' +
+        (playedRows ? '<table class="data cal-table"><tbody>' + playedRows + "</tbody></table>" : '<p class="muted">Nenhum jogo disputado ainda nesta temporada.</p>') + "</div>" +
+      '<div class="card scroll-x"><h3 style="margin-top:0">Próximos jogos</h3>' +
+        (upcomingRows ? '<table class="data cal-table"><tbody>' + upcomingRows + "</tbody></table>" : '<p class="muted">Sem jogos futuros nesta temporada.</p>') + "</div>";
   };
 
   // ---------------- CLUBES (navegar por todos os times) ----------------

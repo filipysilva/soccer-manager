@@ -381,6 +381,17 @@ tr.sug-row td:first-child { box-shadow: inset 3px 0 0 var(--green); }
 .ib-date { font-size: .74rem; white-space: nowrap; flex-shrink: 0; }
 .ib-text { font-size: .88rem; margin-top: 2px; }
 
+/* Calendário anual (§26) */
+.cal-table td { vertical-align: middle; }
+.cal-comp { font-size: .74rem; min-width: 130px; }
+.cal-h { text-align: right; }
+.cal-score { text-align: center; white-space: nowrap; min-width: 64px; }
+.cal-h.me-cell, .cal-a.me-cell { font-weight: 700; color: var(--text); }
+.res-badge { display: inline-block; width: 20px; height: 20px; line-height: 20px; text-align: center; border-radius: 5px; font-size: .72rem; font-weight: 800; color: #fff; }
+.res-badge.res-V { background: var(--green); }
+.res-badge.res-E { background: var(--muted); }
+.res-badge.res-D { background: var(--red); }
+
 /* ---------- util ---------- */
 .muted { color: var(--muted); }
 .money-neg { color: var(--red); }
