@@ -158,6 +158,7 @@
         pairs = cup.ties.map(t => [t.home, t.away]);
         label = state.world.countries[cid].cupName + " — " + cup.phaseName;
       }
+      const isCup = slot.type === "cup";
       const matches = pairs.map(([h, a]) => {
         const homeClub = state.world.clubs[h], awayClub = state.world.clubs[a];
         resetMatchFlags(homeClub); resetMatchFlags(awayClub);
@@ -168,7 +169,8 @@
           isHome: h === uid,
           home: isUser && h === uid ? userTeam() : aiTeam(homeClub),
           away: isUser && a === uid ? userTeam() : aiTeam(awayClub),
-          grass: homeClub.grass
+          grass: homeClub.grass,
+          knockout: isCup // §28 empate nesta partida vai para a disputa de pênaltis
         };
       });
       state.pendingLiveRound = { slot, fixture, isHome: fixture.home === uid };
@@ -243,7 +245,8 @@
           else if (res.ga > res.gh) winner = tie.away;
           else { // §28 empate no mata-mata → disputa de pênaltis (por qualidade, não moeda)
             const teamOf = id => id === state.coach.clubId ? userTeam() : aiTeam(state.world.clubs[id]);
-            shootout = M().penaltyShootout(teamOf(tie.home), teamOf(tie.away), U.RNG.next.bind(U.RNG));
+            // usa a disputa já apresentada ao vivo (res.shootout); senão calcula
+            shootout = res.shootout || M().penaltyShootout(teamOf(tie.home), teamOf(tie.away), U.RNG.next.bind(U.RNG));
             winner = shootout ? (shootout.winnerSide === "h" ? tie.home : tie.away) : (U.RNG.chance(0.5) ? tie.home : tie.away);
           }
           tie.gh = res.gh; tie.ga = res.ga; tie.winner = winner;

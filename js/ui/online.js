@@ -142,6 +142,9 @@
     // §11-18 pênalti com tensão
     es.addEventListener("penalty", e => { st.penalty = JSON.parse(e.data); renderPenaltyOverlay(); });
     es.addEventListener("penaltyEnd", () => { st.penalty = null; removePenaltyOverlay(); });
+    // §28 disputa de pênaltis
+    es.addEventListener("shootout", e => { st.shootout = JSON.parse(e.data); renderShootoutOverlay(); });
+    es.addEventListener("shootoutEnd", () => { st.shootout = null; removeShootoutOverlay(); });
     // §10 reconexão: reconstrói a rodada ao vivo em andamento
     es.addEventListener("roundSnapshot", e => {
       const d = JSON.parse(e.data);
@@ -156,6 +159,7 @@
       render();
       applyPause(d.pause);
       if (d.penalty) { st.penalty = d.penalty; renderPenaltyOverlay(); } // reconexão durante pênalti
+      if (d.shootout) { st.shootout = d.shootout; renderShootoutOverlay(); } // reconexão durante disputa
     });
     es.addEventListener("joinFreeze", e => {
       const d = JSON.parse(e.data);
@@ -1122,6 +1126,51 @@
       const cont = document.getElementById("pen-accel"); if (cont) cont.addEventListener("click", () => api("penaltyAccelerate"));
     }
     st._penShownPhase = p.phase;
+  }
+
+  // ---------- §28 tela de disputa de pênaltis ----------
+  function removeShootoutOverlay() { const b = document.getElementById("shootout-overlay"); if (b) b.remove(); }
+  function renderShootoutOverlay() {
+    const s = st.shootout;
+    if (!s) { removeShootoutOverlay(); return; }
+    let ov = document.getElementById("shootout-overlay");
+    if (!ov) { ov = document.createElement("div"); ov.className = "modal-overlay penalty-overlay"; ov.id = "shootout-overlay"; document.body.appendChild(ov); window.TF.sounds.play("penalty"); }
+    const meId = st.session.playerId;
+    const match = st.live && st.live.matches[s.i];
+    const iAmInvolved = match && (match.humanH === meId || match.humanA === meId);
+    const userSide = match ? (match.humanH === meId ? "h" : match.humanA === meId ? "a" : null) : null;
+    // som do último chute revelado
+    const last = s.kicks.length ? s.kicks[s.kicks.length - 1] : null;
+    if (last && s.reveal !== st._soLastReveal) window.TF.sounds.play(last.outcome === "goal" ? "shootoutGoal" : "shootoutMiss");
+    st._soLastReveal = s.reveal;
+    const dots = side => {
+      const ks = s.kicks.filter(k => k.side === side);
+      const total = Math.ceil(s.total / 2);
+      let html = "";
+      for (let i = 0; i < Math.max(total, ks.length); i++) {
+        if (i < ks.length) html += '<span class="so-dot ' + (ks[i].outcome === "goal" ? "so-goal" : "so-miss") + '">' + (ks[i].outcome === "goal" ? "●" : "○") + "</span>";
+        else html += '<span class="so-dot so-pend">•</span>';
+      }
+      return html;
+    };
+    const sc = last ? { sH: last.sH, sA: last.sA } : { sH: 0, sA: 0 };
+    let body;
+    if (s.done) {
+      const meWon = userSide && s.winnerSide === userSide;
+      const champ = s.winnerSide === "h" ? s.homeName : s.awayName;
+      body = '<div class="pen-result ' + (meWon ? "pen-goal" : userSide ? "pen-miss" : "pen-goal") + '" style="font-size:1.6rem">' + esc(champ) + " se classifica!</div>" +
+        (iAmInvolved ? '<button class="btn primary" id="so-cont">Continuar</button>' : "");
+    } else {
+      const lastTxt = last ? esc(last.taker) + " — " + (last.outcome === "goal" ? "GOL!" : last.outcome === "save" ? "DEFENDEU!" : last.outcome === "post" ? "NA TRAVE!" : "PRA FORA!") : "Preparando as cobranças…";
+      body = '<div class="pen-suspense ' + (last ? (last.outcome === "goal" ? "pen-goal" : "pen-miss") : "") + '" style="font-weight:700">' + lastTxt + "</div>" +
+        (iAmInvolved ? '<button class="btn" id="so-skip">⏩ Acelerar</button>' : "");
+    }
+    ov.innerHTML = '<div class="penalty-screen">' +
+      '<div class="pen-badge">⚽ DISPUTA DE PÊNALTIS</div>' +
+      '<div class="so-score"><span>' + esc(s.homeName) + '</span><b>' + sc.sH + " x " + sc.sA + '</b><span>' + esc(s.awayName) + "</span></div>" +
+      '<div class="so-row">' + dots("h") + '</div><div class="so-row">' + dots("a") + "</div>" + body + "</div>";
+    const skip = document.getElementById("so-skip"); if (skip) skip.addEventListener("click", () => api("shootoutAccelerate"));
+    const cont = document.getElementById("so-cont"); if (cont) cont.addEventListener("click", () => api("shootoutAccelerate"));
   }
 
   // ---------- banner de pausa (quando outro técnico gerencia) ----------

@@ -397,3 +397,14 @@ tr.sug-row td:first-child { box-shadow: inset 3px 0 0 var(--green); }
 .pen-result.pen-goal { color: #4ade80; text-shadow: 0 0 24px rgba(74,222,128,.6); }
 .pen-result.pen-miss { color: #f87171; }
 .pen-result-sub { opacity: .85; margin-bottom: 16px; }
+/* Disputa de pênaltis */
+.so-score { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 8px 0 12px; font-size: .95rem; }
+.so-score b { font-size: 1.5rem; }
+.so-score span { opacity: .85; max-width: 38%; }
+.so-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 3px 0; min-height: 1.4em; }
+.so-dot { display: inline-block; width: 1.1em; text-align: center; font-size: 1.1rem; line-height: 1; }
+.so-dot.so-goal { color: #4ade80; }
+.so-dot.so-miss { color: #f87171; }
+.so-dot.so-pend { color: rgba(255,255,255,.3); }
+.pen-suspense.pen-goal { color: #4ade80; font-style: normal; }
+.pen-suspense.pen-miss { color: #f87171; font-style: normal; }

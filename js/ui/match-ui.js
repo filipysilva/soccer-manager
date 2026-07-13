@@ -22,7 +22,8 @@
       entry: e,
       match: M().createMatch(e.home, e.away, {
         grass: e.grass,
-        interactiveSide: e.isUser ? (e.isHome ? "h" : "a") : null
+        interactiveSide: e.isUser ? (e.isHome ? "h" : "a") : null,
+        knockout: !!e.knockout // §28 mata-mata: empate vai para os pênaltis
       }),
       shown: 0
     }));
@@ -371,6 +372,9 @@
       for (const g of games) {
         if (g.match.finished) continue;
         if (g === userGame && g.match.phase === "halftime") continue;
+        // jogos da IA que empataram no mata-mata resolvem a disputa sozinhos
+        if (g !== userGame && g.match.phase === "shootout") { g.match.finishShootout(); continue; }
+        if (g === userGame && g.match.phase === "shootout") continue; // apresentado abaixo
         g.match.playMinute();
         if (g === userGame && g.match.phase === "halftime") userHitHalftime = true;
       }
@@ -379,6 +383,7 @@
       updateDetail();
 
       if (userGame.match.penalty) { pause(); penaltyScreen(); return; }
+      if (userGame.match.phase === "shootout" && !userGame.match.finished) { pause(); shootoutScreen(); return; }
       if (userGame.match.pendingInjury) { pause(); injuryModal(); return; }
 
       const allDone = games.every(g => g.match.finished);
@@ -492,6 +497,74 @@
       else startSuspense();
     }
 
+    // Tela de DISPUTA DE PÊNALTIS (§28): revela as cobranças uma a uma, com placar
+    // e marcadores, botão Acelerar e o veredito final.
+    function shootoutScreen() {
+      const so = userGame.match.shootout;
+      if (!so) { userGame.match.finishShootout && userGame.match.finishShootout(); play(); return; }
+      const ov = document.createElement("div");
+      ov.className = "modal-overlay penalty-overlay";
+      document.body.appendChild(ov);
+      const userSide = userGame.entry.isHome ? "h" : "a";
+      let timers = [], done = false, reveal = 0;
+      const clearTimers = () => { timers.forEach(t => clearTimeout(t)); timers = []; };
+
+      function finishAndClose() {
+        if (done) return; done = true;
+        clearTimers();
+        userGame.match.finishShootout();
+        ov.remove();
+        playSounds(); updateGrid(); updateDetail();
+        play();
+      }
+      function dots(side) {
+        const ks = so.kicks.filter(k => k.side === side);
+        const globalIdx = i => so.kicks.indexOf(ks[i]);
+        return ks.map((k, i) => {
+          if (globalIdx(i) >= reveal) return '<span class="so-dot so-pend">•</span>';
+          return '<span class="so-dot ' + (k.outcome === "goal" ? "so-goal" : "so-miss") + '">' + (k.outcome === "goal" ? "●" : "○") + "</span>";
+        }).join("");
+      }
+      function currentScore() {
+        let sH = 0, sA = 0;
+        for (let i = 0; i < reveal && i < so.kicks.length; i++) { sH = so.kicks[i].sH; sA = so.kicks[i].sA; }
+        return { sH, sA };
+      }
+      function paint(finalReveal) {
+        const sc = currentScore();
+        const last = reveal > 0 ? so.kicks[reveal - 1] : null;
+        const lastTxt = last ? (last.taker + " — " + (last.outcome === "goal" ? "GOL!" : last.outcome === "save" ? "DEFENDEU!" : last.outcome === "post" ? "NA TRAVE!" : "PRA FORA!")) : "Preparando as cobranças…";
+        const lastCls = last ? (last.outcome === "goal" ? "pen-goal" : "pen-miss") : "";
+        let winnerHtml = "";
+        if (finalReveal) {
+          const meWon = so.winnerSide === userSide;
+          winnerHtml = '<div class="pen-result ' + (meWon ? "pen-goal" : "pen-miss") + '" style="font-size:1.7rem">' + (so.winnerSide === "h" ? esc(so.homeName) : esc(so.awayName)) + " se classifica!</div>";
+        }
+        ov.innerHTML = '<div class="penalty-screen">' +
+          '<div class="pen-badge">⚽ DISPUTA DE PÊNALTIS</div>' +
+          '<div class="so-score"><span>' + esc(so.homeName) + '</span><b>' + sc.sH + " x " + sc.sA + '</b><span>' + esc(so.awayName) + "</span></div>" +
+          '<div class="so-row">' + dots("h") + '</div><div class="so-row">' + dots("a") + "</div>" +
+          (finalReveal ? winnerHtml : '<div class="pen-suspense ' + lastCls + '" style="font-weight:700">' + esc(lastTxt) + "</div>") +
+          (finalReveal ? '<button class="btn primary" id="so-cont">Continuar</button>' : '<button class="btn" id="so-skip">⏩ Acelerar</button>') +
+          "</div>";
+        if (finalReveal) { ov.querySelector("#so-cont").addEventListener("click", finishAndClose); }
+        else { const s = ov.querySelector("#so-skip"); if (s) s.addEventListener("click", skip); }
+      }
+      function step() {
+        if (reveal >= so.kicks.length) { paint(true); timers.push(setTimeout(finishAndClose, 3200)); return; }
+        reveal++;
+        const k = so.kicks[reveal - 1];
+        S().play(k.outcome === "goal" ? "shootoutGoal" : "shootoutMiss");
+        paint(false);
+        timers.push(setTimeout(step, 950));
+      }
+      function skip() { clearTimers(); reveal = so.kicks.length; paint(true); timers.push(setTimeout(finishAndClose, 2600)); }
+
+      S().play("penalty");
+      paint(false);
+      timers.push(setTimeout(step, 800));
+    }
+
     function injuryModal() {
       const pend = userGame.match.pendingInjury;
       const bench = userTeam.bench.filter(b => !b.injuryWeeks);
@@ -566,7 +639,12 @@
       const r = userGame.match.result();
       const gf = userGame.entry.isHome ? r.gh : r.ga;
       const ga = userGame.entry.isHome ? r.ga : r.gh;
-      UI().toast(gf > ga ? "Vitória! 🎉" : gf < ga ? "Derrota." : "Empate.");
+      if (r.shootout) {
+        const meWon = r.shootout.winnerSide === (userGame.entry.isHome ? "h" : "a");
+        UI().toast(meWon ? "Classificado nos pênaltis! 🎉" : "Eliminado nos pênaltis.");
+      } else {
+        UI().toast(gf > ga ? "Vitória! 🎉" : gf < ga ? "Derrota." : "Empate.");
+      }
     }
 
     // a partida começa imediatamente ao entrar na tela

@@ -596,6 +596,7 @@
 
     function playMinute() {
       if (finished) return;
+      if (phase === "shootout") return; // aguardando a UI apresentar a disputa
       if (state.penalty || state.pendingInjury) return; // aguardando decisão do técnico
       if (phase === "halftime") phase = "second";
       clock++;
@@ -662,8 +663,28 @@
         phase = "halftime";
         log(45, "half", "Fim do primeiro tempo: " + homeTeam.club.name + " " + state.gh + " x " + state.ga + " " + awayTeam.club.name, null);
       } else if (phase === "second" && clock >= endMatchAt) {
-        finish();
+        if (opts.knockout && state.gh === state.ga && !state.shootout) startShootout();
+        else finish();
       }
+    }
+
+    /* Mata-mata empatado: entra na fase de disputa de pênaltis (§28), apresentada
+       lance a lance pela UI. O resultado já vem pré-calculado (determinístico). */
+    function startShootout() {
+      const so = penaltyShootout(homeTeam, awayTeam, rng);
+      if (!so) { finish(); return; }
+      state.shootout = {
+        winnerSide: so.winnerSide, scoreH: so.scoreH, scoreA: so.scoreA,
+        kicks: so.kicks, suddenDeath: so.suddenDeath, applied: false,
+        homeName: homeTeam.club.name, awayName: awayTeam.club.name
+      };
+      phase = "shootout";
+      log(90, "shootoutStart", "Fim do tempo normal: " + homeTeam.club.name + " " + state.gh + " x " + state.ga + " " + awayTeam.club.name + ". Vamos para os pênaltis!", null);
+    }
+    function finishShootout() {
+      if (!state.shootout || finished) return;
+      state.shootout.applied = true;
+      finish();
     }
 
     function finish() {
@@ -730,19 +751,21 @@
           h: { ...state.stats.h, poss: Math.round(100 * state.stats.h.poss / totalPoss) },
           a: { ...state.stats.a, poss: Math.round(100 * state.stats.a.poss / totalPoss) }
         },
-        report: { h: sideReport("h"), a: sideReport("a") }
+        report: { h: sideReport("h"), a: sideReport("a") },
+        shootout: state.shootout || null // §28 disputa de pênaltis (mata-mata empatado)
       };
     }
 
     return {
       home: homeTeam, away: awayTeam, events, state,
-      playMinute, substitute, result, resolvePenalty, setPenaltyTaker, finishPenalty, resolveInjury, swapPositions,
+      playMinute, substitute, result, resolvePenalty, setPenaltyTaker, finishPenalty, finishShootout, resolveInjury, swapPositions,
       get phase() { return phase; },
       get finished() { return finished; },
       get minute() { return state.minute; },
       get penalty() { return state.penalty || null; },
       get pendingPenalty() { return state.penalty || null; }, // compat
       get pendingInjury() { return state.pendingInjury || null; },
+      get shootout() { return state.shootout || null; },
       resumeSecondHalf() { if (phase === "halftime") phase = "second"; },
       finishNow() {
         while (!finished) {
@@ -752,6 +775,7 @@
             const best = side.team.bench.filter(p => !p.injuryWeeks)[0];
             resolveInjury(best ? best.id : null);
           }
+          if (phase === "shootout") { finishShootout(); break; }
           playMinute();
         }
       }

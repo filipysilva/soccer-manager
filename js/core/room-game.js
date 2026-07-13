@@ -185,7 +185,8 @@
           home, away,
           humanH: hh ? hh.id : null,
           humanA: ha ? ha.id : null,
-          grass: world.clubs[hId].grass
+          grass: world.clubs[hId].grass,
+          knockout: slot.type === "cup" // §28 empate → disputa de pênaltis ao vivo
         };
       });
       return { live: true, matches, label };
@@ -233,7 +234,8 @@
             if (res.gh > res.ga) winner = tie.home;
             else if (res.ga > res.gh) winner = tie.away;
             else { // §28 empate no mata-mata → disputa de pênaltis (por qualidade, não moeda)
-              shootout = M().penaltyShootout(teamForClub(tie.home), teamForClub(tie.away), U().RNG.next.bind(U().RNG));
+              // usa a disputa já apresentada ao vivo (res.shootout); senão calcula
+              shootout = res.shootout || M().penaltyShootout(teamForClub(tie.home), teamForClub(tie.away), U().RNG.next.bind(U().RNG));
               winner = shootout ? (shootout.winnerSide === "h" ? tie.home : tie.away) : (U().RNG.chance(0.5) ? tie.home : tie.away);
             }
             tie.gh = res.gh; tie.ga = res.ga; tie.winner = winner;

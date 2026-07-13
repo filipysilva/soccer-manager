@@ -228,7 +228,8 @@ function liveSnapshot(room) {
       events: g.match.events.map(ev => ({ i, min: ev.min, type: ev.type, text: ev.text }))
     })),
     pause: pauseState(room),
-    penalty: publicPenalty(room) // §11-18 pênalti em andamento (reconexão)
+    penalty: publicPenalty(room), // §11-18 pênalti em andamento (reconexão)
+    shootout: publicShootout(room) // §28 disputa em andamento (reconexão)
   };
 }
 
@@ -239,13 +240,15 @@ function startLiveRound(room, r) {
     label: r.label,
     games: r.matches.map(e => ({
       entry: e,
-      // humanSides ativa a tela de pênalti (§11-18) quando há humano em qualquer lado
-      match: M.createMatch(e.home, e.away, { grass: e.grass, humanSides: [e.humanH ? "h" : null, e.humanA ? "a" : null].filter(Boolean) }),
+      // humanSides ativa a tela de pênalti (§11-18); knockout ativa a disputa (§28)
+      match: M.createMatch(e.home, e.away, { grass: e.grass, humanSides: [e.humanH ? "h" : null, e.humanA ? "a" : null].filter(Boolean), knockout: !!e.knockout }),
       shown: 0
     })),
     timer: null,
     penalty: null,        // pênalti em andamento (§11-18)
     penaltyTimer: null,
+    shootout: null,       // disputa de pênaltis em andamento (§28)
+    shootoutTimer: null,
     pause: newPauseReasons() // §10 pausa global (manage/halftime/penalty)
   };
   room.live = live;
@@ -287,6 +290,8 @@ function tickRound(room) {
       }
       continue;
     }
+    // §28 disputa: jogos de IA resolvem sozinhos; a do humano é apresentada abaixo
+    if (g.match.phase === "shootout") { if (!hasHuman) g.match.finishShootout(); continue; }
     if (g.match.phase === "halftime" && g.resume2h) g.match.resumeSecondHalf();
     g.match.playMinute();
     while (g.shown < g.match.events.length) {
@@ -315,8 +320,71 @@ function tickRound(room) {
     const gi = live.games.findIndex(g => !g.match.finished && g.match.penalty && !g.penaltyActive);
     if (gi >= 0) { startPenalty(room, gi); return; }
   }
+  // §28 disputa de pênaltis do humano: apresenta lance a lance
+  if (!live.penalty && !live.shootout) {
+    const gi = live.games.findIndex(g => !g.match.finished && g.match.phase === "shootout" && (g.entry.humanH || g.entry.humanA) && !g.shootoutActive);
+    if (gi >= 0) { startShootout(room, gi); return; }
+  }
 
   if (live.games.every(g => g.match.finished)) finishLiveRound(room);
+}
+
+// ---- §28 Disputa de pênaltis online (pausa global + revelação lance a lance) ----
+function publicShootout(room) {
+  const s = room.live && room.live.shootout;
+  if (!s) return null;
+  const done = s.reveal >= s.kicks.length;
+  return {
+    i: s.i, homeName: s.homeName, awayName: s.awayName,
+    kicks: s.kicks.slice(0, s.reveal), total: s.kicks.length, reveal: s.reveal,
+    winnerSide: done ? s.winnerSide : null, done
+  };
+}
+function startShootout(room, gi) {
+  const live = room.live;
+  const g = live.games[gi];
+  const so = g.match.shootout;
+  if (!so) { g.match.finishShootout(); return; }
+  g.shootoutActive = true;
+  const key = "so" + gi;
+  live.pause.penalty.add(key);
+  live.shootout = { key, i: gi, homeName: so.homeName, awayName: so.awayName, kicks: so.kicks, winnerSide: so.winnerSide, reveal: 0, humanH: g.entry.humanH, humanA: g.entry.humanA };
+  broadcast(room, "shootout", publicShootout(room));
+  broadcastPause(room);
+  scheduleShootoutStep(room);
+}
+function scheduleShootoutStep(room) {
+  const live = room.live;
+  if (!live || !live.shootout) return;
+  clearTimeout(live.shootoutTimer);
+  live.shootoutTimer = setTimeout(() => shootoutStep(room), 950);
+}
+function shootoutStep(room) {
+  const live = room.live;
+  if (!live || !live.shootout) return;
+  if (live.shootout.reveal >= live.shootout.kicks.length) { // já revelou tudo → fecha
+    endShootout(room); return;
+  }
+  live.shootout.reveal++;
+  broadcast(room, "shootout", publicShootout(room));
+  if (live.shootout.reveal >= live.shootout.kicks.length) {
+    live.shootoutTimer = setTimeout(() => endShootout(room), 3200); // segura o veredito
+  } else {
+    scheduleShootoutStep(room);
+  }
+}
+function endShootout(room) {
+  const live = room.live;
+  if (!live || !live.shootout) return;
+  clearTimeout(live.shootoutTimer);
+  const g = live.games[live.shootout.i];
+  if (g) { g.match.finishShootout(); g.shootoutActive = false; }
+  const i = live.shootout.i;
+  live.pause.penalty.delete(live.shootout.key);
+  live.shootout = null;
+  broadcast(room, "shootoutEnd", { i });
+  if (g) broadcast(room, "tick", { m: [{ i, gh: g.match.state.gh, ga: g.match.state.ga, min: g.match.minute, ph: g.match.phase, fin: g.match.finished }], ev: [] });
+  broadcastPause(room);
 }
 
 // ---- §11-18 Pênalti online (pausa global + fases) ----
@@ -402,6 +470,7 @@ function finishLiveRound(room) {
   const live = room.live;
   clearInterval(live.timer);
   if (live.penaltyTimer) clearTimeout(live.penaltyTimer);
+  if (live.shootoutTimer) clearTimeout(live.shootoutTimer);
   room.live = null;
   room.phase = "manage";
   const results = live.games.map(g => ({ fixture: g.entry.fixture, result: g.match.result() }));
@@ -587,6 +656,17 @@ function handleAction(room, player, body, respond) {
       return respond({ ok: false, reason: "Só quem joga a partida pode acelerar." });
     if (live.penalty.phase === "suspense") doPenaltyReveal(room);
     else if (live.penalty.phase === "result") endPenalty(room);
+    return respond({ ok: true });
+  }
+  if (t === "shootoutAccelerate") {
+    const live = room.live;
+    if (!live || !live.shootout) return respond({ ok: false, reason: "Sem disputa." });
+    const s = live.shootout;
+    if (player.id !== s.humanH && player.id !== s.humanA) return respond({ ok: false, reason: "Só quem joga pode acelerar." });
+    clearTimeout(live.shootoutTimer);
+    s.reveal = s.kicks.length;
+    broadcast(room, "shootout", publicShootout(room));
+    live.shootoutTimer = setTimeout(() => endShootout(room), 1800);
     return respond({ ok: true });
   }
 
