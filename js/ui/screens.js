@@ -981,12 +981,24 @@
   };
 
   // ---------------- NOTÍCIAS ----------------
+  var NEWS_ICONS = { title: "🏆", transfer: "💱", finance: "💰", match: "⚽", board: "🏛️", warning: "⚠️", info: "📰" };
+  var NEWS_FILTERS = [["all", "Tudo"], ["title", "Títulos"], ["transfer", "Transferências"], ["finance", "Finanças"], ["match", "Jogos"]];
   S.news = function (el) {
-    const news = G().state.news;
+    const news = G().state.news || [];
+    const f = S._newsFilter || "all";
+    const shown = f === "all" ? news : news.filter(n => n.type === f);
     el.innerHTML = "<h2>Notícias</h2>" +
-      (news.length ? news.map(n =>
-        '<div class="news-item ' + esc(n.type) + '"><div class="nmeta">Temporada ' + n.season + " · Semana " + n.week + '</div><div class="ntitle">' + esc(n.title) + '</div><div class="muted">' + esc(n.text) + "</div></div>").join("")
-        : "<p class='muted'>Nenhuma notícia ainda.</p>");
+      '<div class="card news-filters">' +
+        NEWS_FILTERS.map(x => '<button class="chip' + (f === x[0] ? " active" : "") + '" data-nf="' + x[0] + '">' + esc(x[1]) + "</button>").join("") +
+      "</div>" +
+      (shown.length ?
+        '<div class="inbox">' + shown.map(n =>
+          '<div class="inbox-item ' + esc(n.type) + '"><div class="ib-icon">' + (NEWS_ICONS[n.type] || "📰") + "</div>" +
+            '<div class="ib-body"><div class="ib-top"><span class="ib-title">' + esc(n.title) + '</span>' +
+              '<span class="ib-date muted">' + esc(U.formatDateLabel(n.season, n.week)) + "</span></div>" +
+              '<div class="muted ib-text">' + esc(n.text) + "</div></div></div>").join("") + "</div>"
+        : '<p class="muted">Nenhuma notícia' + (f !== "all" ? " nesta categoria" : " ainda") + ".</p>");
+    el.querySelectorAll("[data-nf]").forEach(b => b.addEventListener("click", () => { S._newsFilter = b.dataset.nf; S.news(el); }));
   };
 
   // ---------------- TÉCNICO ----------------

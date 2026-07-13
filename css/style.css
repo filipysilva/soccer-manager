@@ -361,6 +361,26 @@ tr.sug-row td:first-child { box-shadow: inset 3px 0 0 var(--green); }
 .news-item.transfer { border-left-color: var(--accent); }
 .news-item.finance { border-left-color: var(--green); }
 
+/* Notícias como inbox (§34) */
+.news-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { background: var(--bg3); border: 1px solid var(--border); color: var(--muted); border-radius: 999px; padding: 5px 12px; font-size: .82rem; cursor: pointer; }
+.chip:hover { color: var(--text); }
+.chip.active { background: var(--green); border-color: var(--green); color: #fff; font-weight: 600; }
+.inbox { display: flex; flex-direction: column; gap: 8px; }
+.inbox-item { display: flex; gap: 12px; background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--border); border-radius: 0 10px 10px 0; padding: 10px 14px; }
+.inbox-item.title { border-left-color: var(--gold); }
+.inbox-item.warning { border-left-color: var(--red); }
+.inbox-item.transfer { border-left-color: var(--accent); }
+.inbox-item.finance { border-left-color: var(--green); }
+.inbox-item.match { border-left-color: var(--muted); }
+.inbox-item.board { border-left-color: var(--accent); }
+.ib-icon { font-size: 1.4rem; width: 30px; text-align: center; flex-shrink: 0; }
+.ib-body { flex: 1; min-width: 0; }
+.ib-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.ib-title { font-weight: 600; }
+.ib-date { font-size: .74rem; white-space: nowrap; flex-shrink: 0; }
+.ib-text { font-size: .88rem; margin-top: 2px; }
+
 /* ---------- util ---------- */
 .muted { color: var(--muted); }
 .money-neg { color: var(--red); }
