@@ -806,6 +806,42 @@
     return "4-4-2";
   }
 
+  // ---------------- DISPUTA DE PÊNALTIS (§28) ----------------
+  // Resolvedor independente: recebe os dois times (com lineup) e devolve o
+  // resultado com a cobrança lance a lance, para narração de tensão.
+  function shootoutOutcome(taker, gkPlayer, rng) {
+    const gkSkill = gkPlayer ? effSkill(gkPlayer, "gk", "GOL") : 25;
+    const gkBonus = gkPlayer && hasTrait(gkPlayer, "Defesa de pênalti") ? 14 : 0;
+    const skill = effSkill(taker.player, "finishing", taker.slotPos) + (hasTrait(taker.player, "Finalização") ? 5 : 0);
+    const pGoal = U.clamp(skill / (skill + (gkSkill + gkBonus) * 0.62), 0.5, 0.9);
+    if (rng() < pGoal) return "goal";
+    const r = rng();
+    return r < 0.55 ? "save" : r < 0.8 ? "wide" : "post"; // defesa / para fora / trave
+  }
+  function shootoutOrder(lineup) {
+    return starters(lineup).filter(s => s.slotPos !== "GOL")
+      .sort((a, b) => effSkill(b.player, "finishing", b.slotPos) - effSkill(a.player, "finishing", a.slotPos));
+  }
+  /* Disputa de pênaltis: melhor de 5 e, se empatar, morte súbita. */
+  function penaltyShootout(homeTeam, awayTeam, rng) {
+    rng = rng || Math.random;
+    const gkH = homeTeam.lineup[0] && homeTeam.lineup[0].player;
+    const gkA = awayTeam.lineup[0] && awayTeam.lineup[0].player;
+    const ordH = shootoutOrder(homeTeam.lineup), ordA = shootoutOrder(awayTeam.lineup);
+    if (!ordH.length || !ordA.length) return null;
+    const kicks = [];
+    let sH = 0, sA = 0, tH = 0, tA = 0;
+    function kick(side) {
+      if (side === "h") { const t = ordH[tH % ordH.length]; const o = shootoutOutcome(t, gkA, rng); if (o === "goal") sH++; tH++; kicks.push({ side: "h", taker: t.player.name, outcome: o, sH, sA }); }
+      else { const t = ordA[tA % ordA.length]; const o = shootoutOutcome(t, gkH, rng); if (o === "goal") sA++; tA++; kicks.push({ side: "a", taker: t.player.name, outcome: o, sH, sA }); }
+    }
+    function decided() { const maxH = sH + (5 - tH), maxA = sA + (5 - tA); if (sH > maxA) return "h"; if (sA > maxH) return "a"; return null; }
+    let winner = null, suddenDeath = false;
+    for (let r = 0; r < 5 && !winner; r++) { kick("h"); if (winner = decided()) break; kick("a"); if (winner = decided()) break; }
+    while (!winner) { suddenDeath = true; kick("h"); kick("a"); if (sH !== sA) winner = sH > sA ? "h" : "a"; }
+    return { winnerSide: winner, scoreH: sH, scoreA: sA, kicks, suddenDeath };
+  }
+
   /* Muda a formação de um time em campo mantendo os mesmos jogadores,
      redistribuídos nos novos slots por melhor encaixe. Muta team.lineup no lugar. */
   function reformTeam(team, formationName) {
@@ -846,5 +882,5 @@
     "O árbitro apita e autoriza a cobrança."
   ];
 
-  window.TF.match = { FORMATIONS, FORMATION_COORDS, createMatch, simulate, pickLineup, bestFormationFor, reformTeam, teamStrength, positionFactor, PENALTY_SUSPENSE };
+  window.TF.match = { FORMATIONS, FORMATION_COORDS, createMatch, simulate, pickLineup, bestFormationFor, reformTeam, teamStrength, positionFactor, penaltyShootout, PENALTY_SUSPENSE };
 })();

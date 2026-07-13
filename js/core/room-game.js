@@ -229,15 +229,29 @@
           if (cup.championId || cup.phase !== slot.phase) continue;
           for (const tie of cup.ties) {
             const res = resolveFixture(tie.home, tie.away, provided);
-            let winner;
+            let winner, shootout = null;
             if (res.gh > res.ga) winner = tie.home;
             else if (res.ga > res.gh) winner = tie.away;
-            else winner = cup.phase === 1 ? tie.away : (U().RNG.chance(0.5) ? tie.home : tie.away);
+            else { // §28 empate no mata-mata → disputa de pênaltis (por qualidade, não moeda)
+              shootout = M().penaltyShootout(teamForClub(tie.home), teamForClub(tie.away), U().RNG.next.bind(U().RNG));
+              winner = shootout ? (shootout.winnerSide === "h" ? tie.home : tie.away) : (U().RNG.chance(0.5) ? tie.home : tie.away);
+            }
             tie.gh = res.gh; tie.ga = res.ga; tie.winner = winner;
-            tie.penalties = res.gh === res.ga && cup.phase > 1;
+            tie.penalties = res.gh === res.ga;
+            if (shootout) tie.shootout = { scoreH: shootout.scoreH, scoreA: shootout.scoreA, winnerSide: shootout.winnerSide };
             cup.results.push({ ...tie });
             cup.winners.push(winner);
-            if (cid === countryId) results.push({ competition: "Copa", home: tie.home, away: tie.away, gh: res.gh, ga: res.ga, winner });
+            if (cid === countryId) results.push({ competition: "Copa", home: tie.home, away: tie.away, gh: res.gh, ga: res.ga, winner, shootout: tie.shootout || null });
+            // avisa o técnico humano quando a vaga saiu nos pênaltis
+            if (tie.penalties) {
+              for (const clubId of [tie.home, tie.away]) {
+                const h = humanByClub(clubId);
+                if (!h) continue;
+                const meWon = winner === clubId;
+                const ps = tie.shootout ? (clubId === tie.home ? tie.shootout.scoreH + " x " + tie.shootout.scoreA : tie.shootout.scoreA + " x " + tie.shootout.scoreH) : "";
+                addNews(h, meWon ? "Classificado nos pênaltis!" : "Eliminado nos pênaltis", world.clubs[tie.home].name + " " + res.gh + " x " + res.ga + " " + world.clubs[tie.away].name + (ps ? " (pênaltis " + ps + ")" : "") + ".", meWon ? "title" : "match");
+              }
+            }
           }
           C().nextCupPhase(cup, U().RNG.next.bind(U().RNG));
           if (cup.championId) {
