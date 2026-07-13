@@ -462,30 +462,44 @@
     const cid = S._cupCountry || userCid;
     const cup = st.season.cups[cid];
 
-    function tieRow(t, playedInfo) {
+    // linha de um time no confronto (destaca o classificado)
+    function teamLine(club, goals, win) {
+      return '<div class="tie-team' + (win ? " tw" : "") + '">' + UI().crestImg(club, 16) +
+        '<span class="tt-name">' + esc(club.shortName || club.name) + "</span>" +
+        '<span class="tt-score">' + (goals != null ? goals : "") + "</span></div>";
+    }
+    function tieCard(t) {
       const h = world.clubs[t.home], a = world.clubs[t.away];
-      const score = t.winner != null ? " <b>" + t.gh + " x " + t.ga + "</b>" + (t.penalties ? " <span class='muted'>(pên.)</span>" : "") : " <span class='muted'>x</span>";
-      return '<tr><td><span class="club-cell">' + UI().crestImg(h, 18) + esc(h.name) + "</span></td><td style='text-align:center'>" + score + "</td>" +
-        '<td><span class="club-cell" style="justify-content:flex-end">' + esc(a.name) + UI().crestImg(a, 18) + "</span></td>" +
-        (t.winner != null ? "<td class='muted'>→ " + esc(world.clubs[t.winner].name) + "</td>" : "<td></td>") + "</tr>";
+      if (!h || !a) return "";
+      const played = t.winner != null;
+      const pen = played && t.penalties ? '<div class="tie-pen">pênaltis' + (t.shootout ? " " + t.shootout.scoreH + "-" + t.shootout.scoreA : "") + "</div>" : "";
+      const mine = t.home === G().userClub().id || t.away === G().userClub().id;
+      return '<div class="tie-card' + (mine ? " tie-mine" : "") + '">' +
+        teamLine(h, played ? t.gh : null, played && t.winner === t.home) +
+        teamLine(a, played ? t.ga : null, played && t.winner === t.away) + pen + "</div>";
     }
 
-    let html = "<h2>Copa nacional</h2>" +
-      '<div class="card"><div class="row"><select id="sel-cup">' +
-      Object.values(world.countries).map(c => '<option value="' + c.id + '"' + (c.id === cid ? " selected" : "") + ">" + esc(world.countries[c.id].cupName) + "</option>").join("") +
-      "</select></div></div>";
+    // colunas do chaveamento: fases já jogadas (history) + fase atual
+    const cols = cup.history.map(hh => ({ phase: hh.phase, ties: hh.results }));
+    if (!cup.championId && cup.ties.length) cols.push({ phase: cup.phase, ties: cup.ties, current: true });
+    cols.sort((a, b) => a.phase - b.phase);
 
+    let bracket = cols.map(col =>
+      '<div class="bracket-col">' +
+        '<div class="bracket-phase">' + esc(C().CUP_PHASES[col.phase] || ("Fase " + col.phase)) + (col.current ? ' <span class="live-dot">●</span>' : "") + "</div>" +
+        col.ties.map(tieCard).join("") + "</div>").join("");
     if (cup.championId) {
       const champ = world.clubs[cup.championId];
-      html += '<div class="card"><h3 style="margin-top:0">🏆 Campeão</h3><p style="font-size:1.2rem"><span class="club-cell">' + UI().crestImg(champ, 28) + "<b>" + esc(champ.name) + "</b></span></p></div>";
-    } else if (cup.ties.length) {
-      html += '<div class="card"><h3 style="margin-top:0">' + esc(cup.phaseName) + '</h3><table class="data"><tbody>' + cup.ties.map(t => tieRow(t)).join("") + "</tbody></table></div>";
+      bracket += '<div class="bracket-col"><div class="bracket-phase">Campeão</div>' +
+        '<div class="champ-card">🏆<div>' + UI().crestImg(champ, 30) + "<b>" + esc(champ.name) + "</b></div></div></div>";
     }
-    for (let i = cup.history.length - 1; i >= 0; i--) {
-      const h = cup.history[i];
-      html += '<div class="card"><h3 style="margin-top:0">' + esc(C().CUP_PHASES[h.phase]) + ' — resultados</h3><table class="data"><tbody>' + h.results.map(t => tieRow(t)).join("") + "</tbody></table></div>";
-    }
-    el.innerHTML = html;
+
+    el.innerHTML = "<h2>Copa nacional</h2>" +
+      '<div class="card"><div class="row"><select id="sel-cup">' +
+      Object.values(world.countries).map(c => '<option value="' + c.id + '"' + (c.id === cid ? " selected" : "") + ">" + esc(world.countries[c.id].cupName) + "</option>").join("") +
+      "</select></div></div>" +
+      (bracket ? '<div class="card scroll-x"><div class="bracket">' + bracket + "</div></div>"
+        : '<div class="card"><p class="muted">O mata-mata ainda não começou.</p></div>');
     el.querySelector("#sel-cup").addEventListener("change", e => { S._cupCountry = e.target.value; S.cup(el); });
   };
 
