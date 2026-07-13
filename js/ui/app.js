@@ -40,19 +40,29 @@
     return overlay;
   }
 
-  const NAV = [
-    { id: "squad", icon: "👥", label: "Elenco" },
-    { id: "lineup", icon: "📋", label: "Escalação" },
-    { id: "table", icon: "🏆", label: "Classificação" },
-    { id: "clubs", icon: "🏟️", label: "Clubes" },
-    { id: "cup", icon: "🏅", label: "Copa" },
-    { id: "calendar", icon: "📅", label: "Jogos" },
-    { id: "transfers", icon: "💱", label: "Transferências" },
-    { id: "finance", icon: "💰", label: "Finanças" },
-    { id: "news", icon: "📰", label: "Notícias" },
-    { id: "coach", icon: "🎩", label: "Técnico" },
-    { id: "options", icon: "⚙️", label: "Opções" }
+  // §22 menu agrupado
+  const NAV_GROUPS = [
+    { group: "Meu time", items: [
+      { id: "squad", icon: "👥", label: "Elenco" },
+      { id: "lineup", icon: "📋", label: "Escalação" },
+      { id: "coach", icon: "🎩", label: "Técnico" }
+    ] },
+    { group: "Competição", items: [
+      { id: "table", icon: "🏆", label: "Classificação" },
+      { id: "cup", icon: "🏅", label: "Copa" },
+      { id: "calendar", icon: "📅", label: "Jogos" },
+      { id: "clubs", icon: "🏟️", label: "Clubes" }
+    ] },
+    { group: "Gestão", items: [
+      { id: "transfers", icon: "💱", label: "Transferências" },
+      { id: "finance", icon: "💰", label: "Finanças" }
+    ] },
+    { group: "Sala", items: [
+      { id: "news", icon: "📰", label: "Notícias" },
+      { id: "options", icon: "⚙️", label: "Opções" }
+    ] }
   ];
+  const NAV = NAV_GROUPS.reduce((a, g) => a.concat(g.items), []);
 
   function goto(screen, params) {
     ui.screen = screen;
@@ -84,28 +94,36 @@
     const club = G_.userClub();
     const s = G_.state;
     const slot = s.season.slots[s.season.slotIndex];
-    let nextLabel = "Fim da temporada";
-    if (slot) {
-      if (slot.type === "league") nextLabel = "Rodada " + (slot.round + 1) + " — " + s.season.leagues[club.countryId][club.division].name;
-      else if (slot.type === "cup") nextLabel = (window.TF.competitions.CUP_PHASES[slot.phase] || "") + " — " + s.world.countries[club.countryId].cupName;
-      else nextLabel = "Fim da temporada " + s.season.year;
-    }
+    // §20/§21 competição do usuário e próxima fase, sem travessões nem concatenação
+    const ctx = {
+      leagueName: s.season.leagues[club.countryId] && s.season.leagues[club.countryId][club.division] ? s.season.leagues[club.countryId][club.division].name : "",
+      cupName: s.world.countries[club.countryId].cupName
+    };
+    if (slot && slot.type === "cup") ctx.cupPhaseName = window.TF.competitions.CUP_PHASES[slot.phase] || "";
+    const compName = U.formatCompetitionName(slot, ctx);
+    const roundLabel = U.formatRoundLabel(slot, ctx.cupPhaseName);
+    const clubSub = U.joinDot(s.world.countries[club.countryId].name, "Série " + club.division, s.coach.name);
     app.innerHTML =
       '<div class="topbar">' +
-        crestImg(club, 42) +
-        '<div class="club-info"><div class="club-name">' + esc(club.name) + '</div>' +
-        '<div class="club-sub">' + esc(s.world.countries[club.countryId].name) + " — Série " + club.division + " · " + esc(s.coach.name) + "</div></div>" +
+        '<div class="tb-club">' + crestImg(club, 40) +
+          '<div class="club-info"><div class="club-name">' + esc(club.name) + '</div>' +
+          '<div class="club-sub">' + esc(clubSub) + "</div></div>" +
+        "</div>" +
         '<div class="spacer"></div>' +
-        '<div class="stat"><div class="label">Caixa</div><div class="value' + (club.money < 0 ? " money-neg" : "") + '">' + U.formatMoney(club.money) + "</div></div>" +
-        '<div class="stat"><div class="label">Torcida</div><div class="value">' + Math.round(club.moralTorcida) + "%</div></div>" +
-        '<div class="stat"><div class="label">Temporada</div><div class="value">' + s.season.year + " · Semana " + s.week + "</div></div>" +
-        '<div class="stat"><div class="label">Próximo</div><div class="value" style="max-width:230px;overflow:hidden;text-overflow:ellipsis">' + esc(nextLabel) + "</div></div>" +
-        '<button class="btn" id="btn-theme" title="Alternar tema claro/escuro">' + (currentTheme() === "light" ? "🌙" : "☀️") + "</button>" +
+        '<div class="tb-stats">' +
+          '<div class="stat"><div class="label">Caixa</div><div class="value' + (club.money < 0 ? " money-neg" : "") + '">' + U.formatMoney(club.money) + "</div></div>" +
+          '<div class="stat"><div class="label">Torcida</div><div class="value">' + Math.round(club.moralTorcida) + "%</div></div>" +
+          '<div class="stat"><div class="label">Temporada</div><div class="value">' + U.formatSeasonLabel(s.season.year, s.week) + "</div></div>" +
+          '<div class="stat tb-next"><div class="label">Próximo jogo</div><div class="value">' + esc(compName || roundLabel) + '</div><div class="sublabel">' + esc(compName ? roundLabel : "") + "</div></div>" +
+        "</div>" +
+        '<button class="btn icon-btn" id="btn-theme" title="Alternar tema claro/escuro">' + (currentTheme() === "light" ? "🌙" : "☀️") + "</button>" +
         '<button class="btn primary btn-advance" id="btn-advance">Avançar ▶</button>' +
       "</div>" +
       '<div class="main">' +
         '<nav class="sidebar">' +
-          NAV.map(n => '<button class="nav-item' + (ui.screen === n.id ? " active" : "") + '" data-nav="' + n.id + '"><span class="icon">' + n.icon + '</span><span class="txt">' + n.label + "</span></button>").join("") +
+          NAV_GROUPS.map(g => '<div class="nav-group">' + esc(g.group) + "</div>" +
+            g.items.map(n => '<button class="nav-item' + (ui.screen === n.id ? " active" : "") + '" data-nav="' + n.id + '"><span class="icon">' + n.icon + '</span><span class="txt">' + n.label + "</span></button>").join("")
+          ).join("") +
         "</nav>" +
         '<div class="content" id="content"></div>' +
       "</div>";

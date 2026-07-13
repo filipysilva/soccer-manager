@@ -58,6 +58,41 @@
       .replace(/"/g, "&quot;");
   }
 
+  // ---------- §21 formatação compartilhada (offline e online) ----------
+  // Separador consistente (ponto médio), evitando o excesso de travessões.
+  const DOT = " · ";
+  function joinDot() { return Array.prototype.filter.call(arguments, Boolean).join(DOT); }
+  // "Temporada 2026 · Semana 12"
+  function formatSeasonLabel(year, week) {
+    return joinDot("Temporada " + year, week ? "Semana " + week : "");
+  }
+  // "Ano 2026 · Semana 12" (para listas/datas)
+  function formatDateLabel(year, week) {
+    return joinDot("Ano " + year, week ? "Semana " + week : "");
+  }
+  // Rótulo curto da fase: "Rodada 12" ou o nome da fase de copa.
+  function formatRoundLabel(slot, cupPhaseName) {
+    if (!slot) return "Fim de temporada";
+    if (slot.type === "league") return "Rodada " + ((slot.round | 0) + 1);
+    if (slot.type === "cup") return cupPhaseName || "Fase de copa";
+    return "Fim de temporada";
+  }
+  // Nome da competição do slot atual, dado o contexto { leagueName, cupName }.
+  function formatCompetitionName(slot, ctx) {
+    ctx = ctx || {};
+    if (!slot) return "";
+    if (slot.type === "league") return ctx.leagueName || "Liga";
+    if (slot.type === "cup") return ctx.cupName || "Copa";
+    return "";
+  }
+  // Subtítulo de partida: "Brasileirão Série A · Rodada 12"
+  function formatMatchSubtitle(competitionName, roundLabel) {
+    return joinDot(competitionName, roundLabel);
+  }
+
   window.TF = window.TF || {};
-  window.TF.util = { createRng, hashString, RNG, clamp, formatMoney, esc };
+  window.TF.util = {
+    createRng, hashString, RNG, clamp, formatMoney, esc,
+    joinDot, formatSeasonLabel, formatDateLabel, formatRoundLabel, formatCompetitionName, formatMatchSubtitle
+  };
 })();
