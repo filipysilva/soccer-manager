@@ -38,6 +38,7 @@
     let speed = 220;
     let manageOverlay = null;
     let manageSel = null;
+    let detailTab = "narracao"; // narracao | stats | lineups
 
     el.innerHTML =
       '<div class="content" style="height:100vh;overflow-y:auto"><div class="round-screen">' +
@@ -96,10 +97,11 @@
       });
     }
 
-    // ---------- detalhe do jogo selecionado (só leitura) ----------
+    // ---------- detalhe do jogo selecionado (só leitura) com abas ----------
     function buildDetail() {
       const g = games[selectedIdx];
       const e = g.entry;
+      const tab = (id, label) => '<button class="mtab' + (detailTab === id ? " active" : "") + '" data-mtab="' + id + '">' + label + "</button>";
       $detail.innerHTML =
         '<div class="scoreboard">' +
           '<div class="team">' + UI().crestImg(e.home.club, 40) + "<span>" + esc(e.home.club.name) + "</span></div>" +
@@ -107,12 +109,37 @@
           '<div class="team right">' + UI().crestImg(e.away.club, 40) + "<span>" + esc(e.away.club.name) + "</span></div>" +
         "</div>" +
         (e.isUser ? '<div class="watch-hint">👁️ Você está assistindo ao seu jogo. Clique no seu card acima (ou em <b>Gerir meu time</b>) para pausar e mexer no time.</div>' : "") +
-        '<div class="match-events" id="d-events" style="height:260px"></div>' +
-        '<div class="match-stats" id="d-stats"></div>';
-      const $ev = $detail.querySelector("#d-events");
-      for (const ev of g.match.events) $ev.appendChild(evNode(ev));
-      $ev.scrollTop = $ev.scrollHeight;
+        '<div class="mtabs">' + tab("narracao", "Lance a lance") + tab("stats", "Estatísticas") + tab("lineups", "Escalações") + "</div>" +
+        '<div class="mpane" id="d-pane"></div>';
+      $detail.querySelectorAll("[data-mtab]").forEach(b => b.addEventListener("click", () => { detailTab = b.dataset.mtab; buildDetail(); }));
+      renderDetailPane();
       updateDetail();
+    }
+
+    function renderDetailPane() {
+      const g = games[selectedIdx];
+      const pane = $detail.querySelector("#d-pane");
+      if (!pane) return;
+      if (detailTab === "narracao") {
+        pane.innerHTML = '<div class="match-events" id="d-events" style="height:300px"></div>';
+        const $ev = pane.querySelector("#d-events");
+        for (const ev of g.match.events) $ev.appendChild(evNode(ev));
+        $ev.scrollTop = $ev.scrollHeight;
+      } else if (detailTab === "stats") {
+        pane.innerHTML = '<div class="match-stats" id="d-stats"></div>';
+      } else {
+        pane.innerHTML = '<div class="lineups-grid">' + lineupCol(g.entry.home) + lineupCol(g.entry.away) + "</div>";
+      }
+    }
+
+    function lineupCol(team) {
+      const rows = team.lineup.filter(s => s.player).map(s => {
+        const p = s.player;
+        return '<div class="lu-row"><span class="lu-pos ' + "pos-" + s.slotPos + '">' + s.slotPos + '</span><span class="lu-name">' + esc(p.name) +
+          (team.captainId === p.id ? ' <span class="cap">C</span>' : "") + "</span>" +
+          '<span class="lu-en" style="color:' + energyColor(p.energy) + '">' + Math.round(p.energy) + "%</span></div>";
+      }).join("");
+      return '<div class="lu-col"><div class="lu-club">' + UI().crestImg(team.club, 18) + esc(team.club.shortName || team.club.name) + "</div>" + rows + "</div>";
     }
 
     function evNode(ev) {
@@ -124,21 +151,29 @@
 
     function updateDetail() {
       const g = games[selectedIdx];
-      $detail.querySelector("#d-score").textContent = g.match.state.gh + " x " + g.match.state.ga;
-      $detail.querySelector("#d-min").textContent = g.match.finished ? "Fim de jogo" : g.match.phase === "halftime" ? "Intervalo" : g.match.minute + "'";
-      const $ev = $detail.querySelector("#d-events");
-      while ($ev.children.length < g.match.events.length) {
-        $ev.appendChild(evNode(g.match.events[$ev.children.length]));
-        $ev.scrollTop = $ev.scrollHeight;
+      const $score = $detail.querySelector("#d-score");
+      if ($score) $score.textContent = g.match.state.gh + " x " + g.match.state.ga;
+      const $min = $detail.querySelector("#d-min");
+      if ($min) $min.textContent = g.match.finished ? "Fim de jogo" : g.match.phase === "halftime" ? "Intervalo" : g.match.phase === "shootout" ? "Pênaltis" : g.match.minute + "'";
+      if (detailTab === "narracao") {
+        const $ev = $detail.querySelector("#d-events");
+        if ($ev) while ($ev.children.length < g.match.events.length) {
+          $ev.appendChild(evNode(g.match.events[$ev.children.length]));
+          $ev.scrollTop = $ev.scrollHeight;
+        }
+      } else if (detailTab === "stats") {
+        const $st = $detail.querySelector("#d-stats");
+        if ($st) {
+          const st = g.match.result().stats;
+          const row = (a, n, b) => '<div class="sh">' + a + '</div><div class="sname">' + n + '</div><div class="sa">' + b + "</div>";
+          $st.innerHTML =
+            row(st.h.poss + "%", "Posse", st.a.poss + "%") +
+            row(st.h.shots, "Finalizações", st.a.shots) +
+            row(st.h.target, "No gol", st.a.target) +
+            row(st.h.corners, "Escanteios", st.a.corners) +
+            row(st.h.fouls, "Faltas", st.a.fouls);
+        }
       }
-      const st = g.match.result().stats;
-      $detail.querySelector("#d-stats").innerHTML =
-        row(st.h.poss + "%", "Posse", st.a.poss + "%") +
-        row(st.h.shots, "Finalizações", st.a.shots) +
-        row(st.h.target, "No gol", st.a.target) +
-        row(st.h.corners, "Escanteios", st.a.corners) +
-        row(st.h.fouls, "Faltas", st.a.fouls);
-      function row(a, n, b) { return '<div class="sh">' + a + '</div><div class="sname">' + n + '</div><div class="sa">' + b + "</div>"; }
     }
 
     // ---------- tela de gestão (pausa o jogo) ----------

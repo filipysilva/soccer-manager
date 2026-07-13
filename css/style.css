@@ -439,6 +439,22 @@ tr.sug-row td:first-child { box-shadow: inset 3px 0 0 var(--green); }
 .champ-card { background: linear-gradient(160deg, color-mix(in srgb, var(--gold) 25%, var(--card)), var(--card)); border: 1px solid color-mix(in srgb, var(--gold) 45%, var(--border)); border-radius: 10px; padding: 14px 10px; text-align: center; font-size: 1.6rem; }
 .champ-card > div { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: .95rem; margin-top: 6px; }
 
+/* ---------- Abas da partida ---------- */
+.mtabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 10px 0 0; }
+.mtab { background: none; border: none; color: var(--muted); padding: 8px 14px; cursor: pointer; font-size: .86rem; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.mtab:hover { color: var(--text); }
+.mtab.active { color: var(--text); font-weight: 600; border-bottom-color: var(--green); }
+.mpane { padding-top: 10px; }
+.lineups-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.lu-col { min-width: 0; }
+.lu-club { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: .84rem; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--row-border); }
+.lu-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: .84rem; }
+.lu-pos { font-size: .68rem; font-weight: 700; width: 30px; flex-shrink: 0; }
+.lu-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lu-name .cap { font-size: .62rem; background: var(--gold); color: #000; border-radius: 3px; padding: 0 3px; font-weight: 800; }
+.lu-en { font-weight: 600; font-size: .78rem; }
+@media (max-width: 640px) { .lineups-grid { grid-template-columns: 1fr; } }
+
 /* ---------- Tela de PÊNALTI (tensão) — §11-18 ---------- */
 .penalty-overlay { z-index: 60; }
 .penalty-screen { background: linear-gradient(160deg, #0b3d1e, #05210f); color: #fff; border-radius: 16px; padding: 26px 24px; min-width: 300px; max-width: 440px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.5); animation: pen-in .18s ease-out; }
