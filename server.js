@@ -26,7 +26,6 @@ const TF = global.window.TF;
 const ROOT = __dirname;
 const PORT = process.env.PORT || 3026;
 const TICK_MS = 250;              // 1 minuto de jogo a cada 250 ms (~11 s por tempo)
-const HALFTIME_TIMEOUT_MS = 45000; // 2º tempo começa sozinho depois disso
 const ROOM_IDLE_MS = 6 * 60 * 60 * 1000; // salas paradas por 6 h são removidas
 
 const MIME = {
@@ -179,6 +178,60 @@ function tryAdvance(room) {
   startLiveRound(room, r);
 }
 
+// ---- §10 Controlador de pausa GLOBAL da rodada ----
+// Vários motivos independentes, cada um um Set (não um booleano). A rodada
+// inteira fica congelada enquanto QUALQUER motivo tiver algum item.
+function newPauseReasons() {
+  return {
+    manage: new Set(),   // playerIds gerenciando o time (relógio congelado p/ todos)
+    halftime: new Set(), // playerIds (humanos) que ainda não confirmaram o 2º tempo
+    penalty: new Set()   // chaves de pênaltis pendentes (Etapa 3)
+  };
+}
+// Congela o TICK inteiro (ninguém avança): gestão de time ou pênalti em andamento.
+// O intervalo NÃO congela o tick — cada jogo é segurado ao chegar ao intervalo
+// enquanto os demais ainda jogam; assim todos convergem para o intervalo juntos.
+function isTickFrozen(live) {
+  return !!live && (live.pause.manage.size > 0 || live.pause.penalty.size > 0);
+}
+// Estado geral de pausa para o cliente (inclui o intervalo).
+function isRoundPaused(live) {
+  return !!live && (isTickFrozen(live) || live.pause.halftime.size > 0);
+}
+function nameOf(room, playerId) { const p = room.players.get(playerId); return p ? p.name : null; }
+function pauseState(room) {
+  const live = room.live;
+  if (!live) return { paused: false, managerNames: [], halftimeWaiting: [], penalty: [] };
+  return {
+    paused: isRoundPaused(live),
+    managerNames: [...live.pause.manage].map(id => nameOf(room, id)).filter(Boolean),
+    halftimeWaiting: [...live.pause.halftime],
+    penalty: [...live.pause.penalty]
+  };
+}
+function broadcastPause(room) { broadcast(room, "pauseState", pauseState(room)); }
+
+// Snapshot da rodada ao vivo para quem (re)conecta no meio dela (§10 reconexão).
+function liveSnapshot(room) {
+  const live = room.live;
+  if (!live) return null;
+  const meta = (club) => ({ id: club.id, name: club.name, shortName: club.shortName, crest: club.crest });
+  const lineup = (team) => team.lineup.map(s => ({ pos: s.slotPos, name: s.player ? s.player.name : null, rating: s.player ? s.player.rating : null, id: s.player ? s.player.id : null }));
+  return {
+    label: live.label,
+    matches: live.games.map((g, i) => ({
+      i,
+      home: meta(g.entry.home.club), away: meta(g.entry.away.club),
+      humanH: g.entry.humanH, humanA: g.entry.humanA,
+      lineups: { h: lineup(g.entry.home), a: lineup(g.entry.away) },
+      gh: g.match.state.gh, ga: g.match.state.ga, min: g.match.minute, ph: g.match.phase, fin: g.match.finished,
+      events: g.match.events.map(ev => ({ i, min: ev.min, type: ev.type, text: ev.text }))
+    })),
+    pause: pauseState(room),
+    penalty: publicPenalty(room) // §11-18 pênalti em andamento (reconexão)
+  };
+}
+
 function startLiveRound(room, r) {
   room.phase = "round";
   const M = TF.match;
@@ -186,14 +239,14 @@ function startLiveRound(room, r) {
     label: r.label,
     games: r.matches.map(e => ({
       entry: e,
-      match: M.createMatch(e.home, e.away, { grass: e.grass }),
+      // humanSides ativa a tela de pênalti (§11-18) quando há humano em qualquer lado
+      match: M.createMatch(e.home, e.away, { grass: e.grass, humanSides: [e.humanH ? "h" : null, e.humanA ? "a" : null].filter(Boolean) }),
       shown: 0
     })),
-    halftimeWaiting: new Set(), // playerIds dos quais se espera "pronto"
-    halftimeTimer: null,
     timer: null,
-    paused: false,
-    pausedBy: null
+    penalty: null,        // pênalti em andamento (§11-18)
+    penaltyTimer: null,
+    pause: newPauseReasons() // §10 pausa global (manage/halftime/penalty)
   };
   room.live = live;
   broadcast(room, "roundStart", {
@@ -215,21 +268,22 @@ function startLiveRound(room, r) {
 
 function tickRound(room) {
   const live = room.live;
-  if (!live || live.paused || room.frozenForJoin) return; // congelada (gestão ou entrada de técnico)
+  if (!live || isTickFrozen(live) || room.frozenForJoin) return; // congelada (gestão, pênalti ou entrada de técnico)
   const updates = [];
   const newEvents = [];
-  let someoneHitHalftime = false;
+  let halftimeChanged = false;
 
   for (let i = 0; i < live.games.length; i++) {
     const g = live.games[i];
     if (g.match.finished) continue;
     const hasHuman = g.entry.humanH || g.entry.humanA;
-    if (hasHuman && g.match.phase === "halftime" && !g.resume2h) {
-      if (!g.halfNotified) {
+    // Segura o jogo no intervalo (não avança) enquanto não for liberado. Jogos com
+    // humano registram de quem se espera o "Estou pronto" (§10, sem timeout).
+    if (g.match.phase === "halftime" && !g.resume2h) {
+      if (hasHuman && !g.halfNotified) {
         g.halfNotified = true;
-        for (const pid of [g.entry.humanH, g.entry.humanA]) if (pid) live.halftimeWaiting.add(pid);
-        broadcast(room, "halftime", { i, waiting: [...live.halftimeWaiting] });
-        scheduleHalftimeTimeout(room);
+        for (const pid of [g.entry.humanH, g.entry.humanA]) if (pid) live.pause.halftime.add(pid);
+        halftimeChanged = true;
       }
       continue;
     }
@@ -240,29 +294,114 @@ function tickRound(room) {
       newEvents.push({ i, min: ev.min, type: ev.type, text: ev.text });
     }
     updates.push({ i, gh: g.match.state.gh, ga: g.match.state.ga, min: g.match.minute, ph: g.match.phase, fin: g.match.finished });
-    if (hasHuman && g.match.phase === "halftime") someoneHitHalftime = true;
+  }
+
+  // Quando TODOS os jogos ativos convergem para o intervalo: rodada só de IA retoma
+  // sozinha; havendo QUALQUER humano, o 2º tempo só começa quando todos confirmarem
+  // (ready2h). Checa "há humano na rodada" (não o tamanho do Set) para não haver corrida
+  // com o registro dos humanos, que ocorre no tick seguinte ao jogo chegar ao intervalo.
+  const active = live.games.filter(g => !g.match.finished);
+  const allAtHalftime = active.length > 0 && active.every(g => g.match.phase === "halftime" && !g.resume2h);
+  const humansInRound = active.some(g => g.entry.humanH || g.entry.humanA);
+  if (allAtHalftime && !humansInRound) {
+    for (const g of active) g.resume2h = true;
   }
 
   if (updates.length || newEvents.length) broadcast(room, "tick", { m: updates, ev: newEvents });
+  if (halftimeChanged) broadcastPause(room); // intervalo: lista de quem falta confirmar
+
+  // §11-18 pênalti com humano envolvido: pausa a rodada inteira e abre a tela de tensão
+  if (!live.penalty) {
+    const gi = live.games.findIndex(g => !g.match.finished && g.match.penalty && !g.penaltyActive);
+    if (gi >= 0) { startPenalty(room, gi); return; }
+  }
 
   if (live.games.every(g => g.match.finished)) finishLiveRound(room);
 }
 
-function scheduleHalftimeTimeout(room) {
+// ---- §11-18 Pênalti online (pausa global + fases) ----
+function publicPenalty(room) {
+  const p = room.live && room.live.penalty;
+  if (!p) return null;
+  return {
+    i: p.i, club: p.club, oppClub: p.oppClub, gkName: p.gkName,
+    attackerHumanId: p.attackerHumanId, defenderHumanId: p.defenderHumanId,
+    eligible: p.eligible, takerName: p.takerName, phase: p.phase, outcome: p.outcome,
+    gh: p.gh, ga: p.ga
+  };
+}
+function startPenalty(room, gi) {
   const live = room.live;
-  if (!live || live.halftimeTimer) return;
-  live.halftimeTimer = setTimeout(() => {
-    live.halftimeTimer = null;
-    for (const g of live.games) g.resume2h = true;
-    live.halftimeWaiting.clear();
-    broadcast(room, "info", { text: "Segundo tempo iniciado automaticamente." });
-  }, HALFTIME_TIMEOUT_MS);
+  const g = live.games[gi];
+  const pen = g.match.penalty;
+  if (!pen) return;
+  g.penaltyActive = true;
+  const key = "pen" + gi + "_" + pen.min;
+  live.pause.penalty.add(key);
+  live.penalty = {
+    key, i: gi, attKey: pen.attKey, club: pen.club, oppClub: pen.oppClub, gkName: pen.gkName,
+    attackerHumanId: pen.attKey === "h" ? g.entry.humanH : g.entry.humanA,
+    defenderHumanId: pen.attKey === "h" ? g.entry.humanA : g.entry.humanH,
+    eligible: pen.eligible, takerId: pen.takerId, takerName: pen.takerName,
+    phase: (pen.userAttacking && !pen.takerId) ? "waiting_taker" : "suspense",
+    outcome: null, gh: g.match.state.gh, ga: g.match.state.ga
+  };
+  broadcast(room, "penalty", publicPenalty(room));
+  broadcastPause(room);
+  if (live.penalty.phase === "waiting_taker") {
+    // segurança: se o batedor não for escolhido (ex.: desconexão), sorteia e segue
+    live.penaltyTimer = setTimeout(() => { autoPickTaker(room); }, 20000);
+  } else {
+    schedulePenaltyReveal(room);
+  }
+}
+function autoPickTaker(room) {
+  const live = room.live;
+  if (!live || !live.penalty || live.penalty.phase !== "waiting_taker") return;
+  const g = live.games[live.penalty.i];
+  g.match.setPenaltyTaker(null); // melhor batedor
+  const pen = g.match.penalty;
+  live.penalty.takerId = pen.takerId; live.penalty.takerName = pen.takerName;
+  schedulePenaltyReveal(room);
+}
+function schedulePenaltyReveal(room) {
+  const live = room.live;
+  if (!live || !live.penalty) return;
+  clearTimeout(live.penaltyTimer);
+  live.penalty.phase = "suspense";
+  broadcast(room, "penalty", publicPenalty(room));
+  live.penaltyTimer = setTimeout(() => doPenaltyReveal(room), 4500);
+}
+function doPenaltyReveal(room) {
+  const live = room.live;
+  if (!live || !live.penalty || live.penalty.phase === "result") return;
+  clearTimeout(live.penaltyTimer);
+  const g = live.games[live.penalty.i];
+  const r = g.match.finishPenalty();
+  live.penalty.outcome = r.outcome;
+  live.penalty.phase = "result";
+  live.penalty.gh = g.match.state.gh; live.penalty.ga = g.match.state.ga;
+  broadcast(room, "penalty", publicPenalty(room));
+  broadcast(room, "tick", { m: [{ i: live.penalty.i, gh: g.match.state.gh, ga: g.match.state.ga, min: g.match.minute, ph: g.match.phase, fin: g.match.finished }], ev: [] });
+  live.penaltyTimer = setTimeout(() => endPenalty(room), 2600);
+}
+function endPenalty(room) {
+  const live = room.live;
+  if (!live || !live.penalty) return;
+  clearTimeout(live.penaltyTimer);
+  const g = live.games[live.penalty.i];
+  live.pause.penalty.delete(live.penalty.key);
+  if (g) g.penaltyActive = false;
+  const i = live.penalty.i;
+  live.penalty = null;
+  broadcast(room, "penaltyEnd", { i });
+  broadcastPause(room);
 }
 
 function finishLiveRound(room) {
   const live = room.live;
   clearInterval(live.timer);
-  if (live.halftimeTimer) clearTimeout(live.halftimeTimer);
+  if (live.penaltyTimer) clearTimeout(live.penaltyTimer);
   room.live = null;
   room.phase = "manage";
   const results = live.games.map(g => ({ fixture: g.entry.fixture, result: g.match.result() }));
@@ -429,6 +568,28 @@ function handleAction(room, player, body, respond) {
     return respond(r);
   }
 
+  // §11-18 ações do pênalti (independem do jogo próprio do técnico)
+  if (t === "penaltyTaker") {
+    const live = room.live;
+    if (!live || !live.penalty || live.penalty.phase !== "waiting_taker") return respond({ ok: false, reason: "Sem pênalti para cobrar." });
+    if (live.penalty.attackerHumanId !== player.id) return respond({ ok: false, reason: "Você não bate este pênalti." });
+    const g = live.games[live.penalty.i];
+    g.match.setPenaltyTaker(body.takerId);
+    live.penalty.takerId = g.match.penalty.takerId;
+    live.penalty.takerName = g.match.penalty.takerName;
+    schedulePenaltyReveal(room);
+    return respond({ ok: true });
+  }
+  if (t === "penaltyAccelerate") {
+    const live = room.live;
+    if (!live || !live.penalty) return respond({ ok: false, reason: "Sem pênalti." });
+    if (player.id !== live.penalty.attackerHumanId && player.id !== live.penalty.defenderHumanId)
+      return respond({ ok: false, reason: "Só quem joga a partida pode acelerar." });
+    if (live.penalty.phase === "suspense") doPenaltyReveal(room);
+    else if (live.penalty.phase === "result") endPenalty(room);
+    return respond({ ok: true });
+  }
+
   // durante a rodada ao vivo
   const LIVE_ACTIONS = ["sub", "liveTactics", "ready2h", "manageOpen", "manageClose", "liveSwap", "liveReform", "liveCaptain", "liveSetPiece"];
   if (LIVE_ACTIONS.includes(t)) {
@@ -439,16 +600,16 @@ function handleAction(room, player, body, respond) {
     const sideKey = g.entry.humanH === player.id ? "h" : "a";
     const team = sideKey === "h" ? g.entry.home : g.entry.away;
 
-    // pausa global enquanto um técnico gerencia o time
+    // §10 Pausa global enquanto um técnico gerencia. Como o relógio fica congelado
+    // para todos, vários técnicos podem gerir ao mesmo tempo sem prejuízo.
     if (t === "manageOpen") {
-      if (live.paused && live.pausedBy !== player.id) return respond({ ok: false, reason: "Outro técnico está gerenciando; aguarde." });
-      live.paused = true;
-      live.pausedBy = player.id;
-      broadcast(room, "roundPaused", { by: player.name });
+      live.pause.manage.add(player.id);
+      broadcastPause(room);
       return respond({ ok: true, lineup: serializeLineup(team) });
     }
     if (t === "manageClose") {
-      if (live.pausedBy === player.id) { live.paused = false; live.pausedBy = null; broadcast(room, "roundResumed", {}); }
+      live.pause.manage.delete(player.id);
+      broadcastPause(room);
       return respond({ ok: true });
     }
     if (t === "sub") {
@@ -479,16 +640,12 @@ function handleAction(room, player, body, respond) {
       applyTacticDims(team.tactics, body);
       return respond(Object.assign({ ok: true }, body.formationName ? { lineup: serializeLineup(team) } : {}));
     }
-    // ready2h
-    live.halftimeWaiting.delete(player.id);
-    const stillWaitingForThisMatch = [g.entry.humanH, g.entry.humanA].some(pid => pid && live.halftimeWaiting.has(pid));
-    if (!stillWaitingForThisMatch) g.resume2h = true;
-    if (!live.halftimeWaiting.size && live.halftimeTimer) {
-      clearTimeout(live.halftimeTimer);
-      live.halftimeTimer = null;
+    // ready2h — §10: o 2º tempo só começa quando TODOS os humanos confirmarem (sem timeout)
+    live.pause.halftime.delete(player.id);
+    if (!live.pause.halftime.size) {
       for (const gg of live.games) gg.resume2h = true;
     }
-    broadcast(room, "halftime", { waiting: [...live.halftimeWaiting] });
+    broadcastPause(room);
     return respond({ ok: true });
   }
 
@@ -632,6 +789,8 @@ const server = http.createServer((req, res) => {
     room.lastActivity = Date.now();
     sseSend(player, "lobby", lobbyState(room));
     if (room.game) sseSend(player, "snapshot", { shared: room.game.snapshot(), personal: room.game.personal(player.id) });
+    // §10 reconexão: se há rodada ao vivo, reconstrói o estado (placares, eventos, pausa)
+    if (room.live) sseSend(player, "roundSnapshot", liveSnapshot(room));
     pushLobby(room);
     const ka = setInterval(() => { try { res.write(": ping\n\n"); } catch (e) { /* fecha abaixo */ } }, 25000);
     req.on("close", () => {

@@ -137,23 +137,25 @@
       }
       if (st.view === "round") updateRound();
     });
-    es.addEventListener("halftime", e => {
-      if (!st.live) return;
+    // §10 pausa global unificada (gestão/intervalo/pênalti) + lista de quem falta no intervalo
+    es.addEventListener("pauseState", e => applyPause(JSON.parse(e.data)));
+    // §11-18 pênalti com tensão
+    es.addEventListener("penalty", e => { st.penalty = JSON.parse(e.data); renderPenaltyOverlay(); });
+    es.addEventListener("penaltyEnd", () => { st.penalty = null; removePenaltyOverlay(); });
+    // §10 reconexão: reconstrói a rodada ao vivo em andamento
+    es.addEventListener("roundSnapshot", e => {
       const d = JSON.parse(e.data);
-      st.live.waitingMe = (d.waiting || []).includes(st.session.playerId);
-      if (st.view === "round") { renderRoundControls(); }
-    });
-    es.addEventListener("roundPaused", e => {
-      const d = JSON.parse(e.data);
-      if (!st.live) return;
-      st.live.pausedBy = d.by || null;
-      // quem não está gerenciando vê um aviso; quem gerencia já tem o overlay
-      if (st.view === "round" && !st._managing) showPausedBanner(d.by);
-    });
-    es.addEventListener("roundResumed", () => {
-      if (!st.live) return;
-      st.live.pausedBy = null;
-      hidePausedBanner();
+      st.live = {
+        label: d.label,
+        matches: d.matches.map(m => ({ ...m })),
+        selected: Math.max(0, d.matches.findIndex(m => m.humanH === st.session.playerId || m.humanA === st.session.playerId)),
+        waitingMe: false
+      };
+      st.view = "round";
+      window.TF.sounds.startAmbience();
+      render();
+      applyPause(d.pause);
+      if (d.penalty) { st.penalty = d.penalty; renderPenaltyOverlay(); } // reconexão durante pênalti
     });
     es.addEventListener("joinFreeze", e => {
       const d = JSON.parse(e.data);
@@ -505,9 +507,15 @@
   // painel tático (mesmo do offline, adaptado ao cliente online)
   const TAC = () => window.TF.tactics;
   function tacticsSelects(t) {
-    const D = TAC().DIMENSIONS;
-    return Object.keys(D).map(k => '<label class="tac-sel"><span class="muted">' + D[k].label + '</span><select data-tac="' + k + '">' +
-      D[k].options.map(o => '<option value="' + o[0] + '"' + (t[k] === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>").join("") + "</select></label>").join("");
+    const D = TAC().DIMENSIONS, G = TAC().GROUPS || {};
+    let html = "", curGroup = null;
+    for (const k of Object.keys(D)) {
+      const g = G[k];
+      if (g && g !== curGroup) { html += '<div class="tac-group">' + esc(g) + "</div>"; curGroup = g; }
+      html += '<label class="tac-sel"><span class="muted">' + D[k].label + '</span><select data-tac="' + k + '">' +
+        D[k].options.map(o => '<option value="' + o[0] + '"' + (t[k] === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>").join("") + "</select></label>";
+    }
+    return html;
   }
   function tacticsDescriptions(t) {
     const D = TAC().DIMENSIONS;
@@ -1033,6 +1041,87 @@
     if (b2) b2.addEventListener("click", async () => { live.waitingMe = false; renderRoundControls(); await api("ready2h"); });
     const bm = $("#rc-manage");
     if (bm) bm.addEventListener("click", openLiveManage);
+  }
+
+  // §10 aplica o estado de pausa global vindo do servidor (gestão/intervalo/pênalti)
+  function applyPause(p) {
+    if (!st.live || !p) return;
+    st.live.paused = !!p.paused;
+    const names = p.managerNames || [];
+    st.live.pausedBy = names.length ? names.join(", ") : null;
+    st.live.waitingMe = (p.halftimeWaiting || []).includes(st.session.playerId);
+    if (st.view !== "round") return;
+    renderRoundControls();
+    // banner só quando OUTRO técnico gerencia (eu gerindo tenho o overlay; o intervalo tem botão próprio)
+    if (st.live.pausedBy && !st._managing) showPausedBanner(st.live.pausedBy);
+    else hidePausedBanner();
+  }
+
+  // ---------- §11-18 tela de pênalti (tensão) ----------
+  function removePenaltyOverlay() {
+    if (st._penPhrase) { clearInterval(st._penPhrase); st._penPhrase = null; }
+    const b = document.getElementById("penalty-overlay"); if (b) b.remove();
+    st._penOv = null; st._penShownPhase = null;
+  }
+  function renderPenaltyOverlay() {
+    const p = st.penalty;
+    if (!p) { removePenaltyOverlay(); return; }
+    let ov = document.getElementById("penalty-overlay");
+    if (!ov) {
+      ov = document.createElement("div");
+      ov.className = "modal-overlay penalty-overlay";
+      ov.id = "penalty-overlay";
+      document.body.appendChild(ov);
+      window.TF.sounds.play("penalty");
+    }
+    st._penOv = ov;
+    const meId = st.session.playerId;
+    const iAmTaker = p.attackerHumanId === meId;
+    const iAmInvolved = iAmTaker || p.defenderHumanId === meId;
+    const set = html => { ov.innerHTML = '<div class="penalty-screen">' + html + "</div>"; };
+    const accelBtn = iAmInvolved ? '<button class="btn" id="pen-accel">⏩ Acelerar</button>' : "";
+
+    if (p.phase === "waiting_taker" && iAmTaker) {
+      if (st._penPhrase) { clearInterval(st._penPhrase); st._penPhrase = null; }
+      const cands = (p.eligible || []).slice().sort((a, b) => b.finishing - a.finishing);
+      set(
+        '<div class="pen-badge">⚽ PÊNALTI</div><div class="pen-head">' + esc(p.club) + '</div><div class="pen-sub">Quem vai bater?</div>' +
+        '<div class="pen-takers">' + cands.map(c =>
+          '<button class="pen-taker" data-taker="' + c.id + '"><span class="pen-pos">' + esc(c.pos) + '</span><span class="pen-name">' + esc(c.name) + (c.star ? " ⭐" : "") + '</span><span class="pen-stat">Fin ' + c.finishing + " · " + c.energy + "%</span></button>").join("") + "</div>"
+      );
+      ov.querySelectorAll("[data-taker]").forEach(b => b.addEventListener("click", () => { api("penaltyTaker", { takerId: b.dataset.taker }); }));
+      return;
+    }
+    if (p.phase === "waiting_taker") { // outros aguardam o batedor
+      if (st._penPhrase) { clearInterval(st._penPhrase); st._penPhrase = null; }
+      set('<div class="pen-badge">⚽ PÊNALTI</div><div class="pen-head">' + esc(p.club) + '</div><div class="pen-ball">⚽</div><div class="pen-suspense">O técnico escolhe o batedor…</div>');
+      return;
+    }
+    if (p.phase === "suspense") {
+      const cobrador = p.club;
+      const phrases = (window.TF.match.PENALTY_SUSPENSE || ["Tensão máxima…"]).slice();
+      let i = 0;
+      const paint = () => set(
+        '<div class="pen-badge">⚽ PÊNALTI</div><div class="pen-head">' + esc(cobrador) + ' na cobrança</div>' +
+        '<div class="pen-ball">⚽</div><div class="pen-taker-name">' + esc(p.takerName || "") + '</div>' +
+        '<div class="pen-suspense">' + esc(phrases[i % phrases.length]) + '</div>' + accelBtn
+      );
+      paint();
+      const accel = document.getElementById("pen-accel"); if (accel) accel.addEventListener("click", () => api("penaltyAccelerate"));
+      if (st._penPhrase) clearInterval(st._penPhrase);
+      st._penPhrase = setInterval(() => { i++; paint(); const a = document.getElementById("pen-accel"); if (a) a.addEventListener("click", () => api("penaltyAccelerate")); }, 1100);
+      return;
+    }
+    if (p.phase === "result") {
+      if (st._penPhrase) { clearInterval(st._penPhrase); st._penPhrase = null; }
+      const o = p.outcome;
+      const big = o === "goal" ? "GOL!" : o === "save" ? "DEFENDEU!" : o === "post" ? "NA TRAVE!" : "PRA FORA!";
+      const cls = o === "goal" ? "pen-goal" : "pen-miss";
+      if (st._penShownPhase !== "result") window.TF.sounds.play(o === "goal" ? "goal" : o === "save" ? "save" : "miss");
+      set('<div class="pen-result ' + cls + '">' + big + '</div><div class="pen-result-sub">' + esc(p.takerName || "") + '</div>' + (iAmInvolved ? '<button class="btn primary" id="pen-accel">Continuar</button>' : ""));
+      const cont = document.getElementById("pen-accel"); if (cont) cont.addEventListener("click", () => api("penaltyAccelerate"));
+    }
+    st._penShownPhase = p.phase;
   }
 
   // ---------- banner de pausa (quando outro técnico gerencia) ----------

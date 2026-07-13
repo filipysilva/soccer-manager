@@ -268,6 +268,8 @@ tr.sug-row td:first-child { box-shadow: inset 3px 0 0 var(--green); }
 .star-mark { font-size: .82em; filter: drop-shadow(0 0 2px rgba(251,191,36,.5)); }
 
 /* ---------- painel tático ---------- */
+.tac-group { flex-basis: 100%; width: 100%; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--accent, var(--text)); opacity: .8; margin: 8px 0 2px; padding-bottom: 3px; border-bottom: 1px solid color-mix(in srgb, var(--text) 14%, transparent); }
+.tac-group:first-child { margin-top: 0; }
 .tac-sel { display: inline-flex; flex-direction: column; gap: 2px; }
 .tac-sel > span { font-size: .7rem; text-transform: uppercase; letter-spacing: .03em; }
 .tac-sel select { padding: 5px 8px; font-size: .84rem; }
@@ -372,3 +374,26 @@ tr.sug-row td:first-child { box-shadow: inset 3px 0 0 var(--green); }
   .lineup-wrap { grid-template-columns: 1fr; }
   .grid2 { grid-template-columns: 1fr; }
 }
+
+/* ---------- Tela de PÊNALTI (tensão) — §11-18 ---------- */
+.penalty-overlay { z-index: 60; }
+.penalty-screen { background: linear-gradient(160deg, #0b3d1e, #05210f); color: #fff; border-radius: 16px; padding: 26px 24px; min-width: 300px; max-width: 440px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.5); animation: pen-in .18s ease-out; }
+@keyframes pen-in { from { transform: scale(.94); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.pen-badge { font-size: .72rem; letter-spacing: .2em; font-weight: 800; color: #ffd34d; }
+.pen-head { font-size: 1.35rem; font-weight: 800; margin-top: 4px; }
+.pen-sub { opacity: .85; margin: 6px 0 14px; }
+.pen-takers { display: flex; flex-direction: column; gap: 6px; max-height: 52vh; overflow-y: auto; }
+.pen-taker { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); color: #fff; cursor: pointer; text-align: left; font: inherit; }
+.pen-taker:hover { background: rgba(255,255,255,.16); }
+.pen-taker .pen-pos { font-size: .7rem; font-weight: 800; background: rgba(255,255,255,.2); padding: 2px 6px; border-radius: 6px; }
+.pen-taker .pen-name { flex: 1; font-weight: 700; }
+.pen-taker .pen-stat { font-size: .78rem; opacity: .8; }
+.pen-ball { font-size: 2.6rem; margin: 10px 0; animation: pen-bob 1s ease-in-out infinite; }
+@keyframes pen-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+.pen-taker-name { font-size: 1.1rem; font-weight: 800; }
+.pen-suspense { min-height: 2.4em; margin: 10px 0 16px; opacity: .92; font-style: italic; }
+.pen-result { font-size: 2.4rem; font-weight: 900; letter-spacing: .04em; margin: 10px 0; animation: pen-pop .25s ease-out; }
+@keyframes pen-pop { from { transform: scale(.6); } to { transform: scale(1); } }
+.pen-result.pen-goal { color: #4ade80; text-shadow: 0 0 24px rgba(74,222,128,.6); }
+.pen-result.pen-miss { color: #f87171; }
+.pen-result-sub { opacity: .85; margin-bottom: 16px; }

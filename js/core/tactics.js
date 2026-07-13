@@ -148,26 +148,25 @@
   for (const k of FORMATION_NAMES) { FORMATION_COORDS[k] = FORMATIONS[k].coords; FORMATION_SLOTS[k] = FORMATIONS[k].slots; }
 
   // ---------------- DIMENSÕES TÁTICAS (metadados p/ UI) ----------------
+  // Grupos para a UI: Estratégia (com a bola), Sem a bola, Dinâmica.
+  const GROUPS = { focus: "Estratégia", buildup: "Estratégia", mentality: "Estratégia", pressing: "Sem a bola", marking: "Sem a bola", tempo: "Dinâmica", fullbacks: "Dinâmica", wingers: "Dinâmica" };
   const DIMENSIONS = {
     focus: {
       label: "Foco ofensivo", key: "focus",
       options: [
-        ["equilibrado", "Equilibrado", "Distribui as jogadas entre meio e lados. Sem grande bônus, sem grande fraqueza."],
-        ["meio", "Pelo meio", "Passes entre linhas e tabelas. Forte com meias técnicos; sofre contra meio fechado."],
-        ["lados", "Pelas laterais", "Pontas e laterais, ultrapassagens e cruzamentos. Deixa espaço nas costas dos laterais."],
-        ["esquerda", "Pela esquerda", "Concentra o ataque na esquerda para explorar um lado fraco do rival."],
-        ["direita", "Pela direita", "Concentra o ataque na direita para explorar um lado fraco do rival."],
-        ["bolas_longas", "Bolas longas", "Lançamentos diretos; menos meio-campo, mais disputa aérea."],
-        ["contra_ataque", "Contra-ataques", "Defende organizado e acelera ao recuperar. Letal contra times ofensivos."]
+        ["equilibrado", "Equilibrado", "Distribui as jogadas entre o centro e os lados. Sem grande bônus, sem grande fraqueza."],
+        ["meio", "Pelo meio", "Aproxima meias e volantes construtores, tabelas e passes em profundidade. Sofre contra meio fechado."],
+        ["lados", "Pelas laterais", "Pontas e laterais, ultrapassagens e jogadas de linha de fundo. Deixa espaço nas costas dos laterais."],
+        ["contra_ataque", "Contra-ataques", "Recupera e acelera nos espaços com atacantes rápidos. Letal contra times ofensivos; cria menos ataques posicionais."]
       ]
     },
     buildup: {
       label: "Construção", key: "buildup",
       options: [
-        ["trocaPasses", "Troca de passes", "Passes curtos, mais posse e paciência. Sofre contra pressão alta."],
-        ["misto", "Jogo misto", "Alterna curto e vertical. Flexível, sem grandes bônus ou riscos."],
-        ["ataqueRapido", "Ataque rápido", "Chega ao ataque com poucos passes e profundidade. Favorece velocistas e meias criativos."],
-        ["bolaLonga", "Bola longa", "Lançamentos diretos. Favorece jogadores fortes/altos; perde mais a posse."]
+        ["trocaPasses", "Troca de passes", "Passes curtos, jogadores próximos e mais posse. Sofre contra pressão alta."],
+        ["misto", "Jogo misto", "Alterna passes curtos, progressões e lançamentos conforme a situação."],
+        ["ataqueRapido", "Ataque rápido", "Chega ao ataque com poucos passes, buscando espaços e movimentação. Favorece velocistas e meias criativos."],
+        ["bolaLonga", "Bola longa", "Lançamentos diretos para os atacantes e disputa da segunda bola. Favorece jogadores fortes; perde mais a posse."]
       ]
     },
     mentality: {
@@ -177,7 +176,22 @@
         ["defensiva", "Defensiva", "Prioriza a solidez, com transições pontuais."],
         ["equilibrada", "Equilibrada", "Equilíbrio entre ataque e defesa."],
         ["ofensiva", "Ofensiva", "Mais jogadores no ataque, mais chances e mais risco atrás."],
-        ["muito_ofensiva", "Muito ofensiva", "Pressão total; máximo volume ofensivo e máxima vulnerabilidade."]
+        ["muito_ofensiva", "Muito ofensiva", "Máximo volume ofensivo e máxima vulnerabilidade nas transições."]
+      ]
+    },
+    pressing: {
+      label: "Pressão", key: "pressing",
+      options: [
+        ["baixa", "Baixa", "Espera o adversário. Pouco desgaste e pouca recuperação alta."],
+        ["media", "Média", "Pressão equilibrada."],
+        ["alta", "Alta", "Recupera a bola no campo adversário e força erros. Gasta energia e deixa espaço atrás."]
+      ]
+    },
+    marking: {
+      label: "Marcação", key: "marking",
+      options: [
+        ["zona", "Por zona", "Protege os espaços e mantém a estrutura, com trocas de marcação. Menos desgaste, mas cede bolas entre os setores."],
+        ["homem", "Homem a homem", "Acompanha de perto e sufoca os craques adversários. Mais desgaste, faltas e cartões, e abre espaços quando um jogador persegue o marcado."]
       ]
     },
     tempo: {
@@ -188,76 +202,56 @@
         ["rapido", "Rápido", "Mais ataques e transições, mais desgaste e mais risco de erro."]
       ]
     },
-    pressing: {
-      label: "Pressão", key: "pressing",
-      options: [
-        ["baixa", "Baixa", "Espera o adversário. Pouco desgaste, pouca recuperação alta."],
-        ["media", "Média", "Pressão equilibrada."],
-        ["alta", "Alta", "Recupera a bola no campo adversário e força erros; gasta energia e deixa espaço atrás."]
-      ]
-    },
-    line: {
-      label: "Linha defensiva", key: "line",
-      options: [
-        ["baixa", "Baixa", "Fecha os espaços na frente da área; concede o meio, protege as costas."],
-        ["media", "Média", "Linha equilibrada."],
-        ["alta", "Alta", "Compacta e adianta o time; vulnerável a bolas em profundidade e velocistas."]
-      ]
-    },
-    width: {
-      label: "Largura", key: "width",
-      options: [
-        ["estreita", "Estreita", "Compacta pelo centro; menos amplitude e menos cruzamentos."],
-        ["equilibrada", "Equilibrada", "Largura padrão."],
-        ["aberta", "Aberta", "Abre o campo, mais cruzamentos e infiltrações; expõe o centro."]
-      ]
-    },
     fullbacks: {
       label: "Laterais", key: "fullbacks",
       options: [
         ["presos", "Ficar presos", "Laterais recuados: mais proteção, menos apoio ofensivo."],
         ["equilibrio", "Apoio equilibrado", "Sobem com critério."],
-        ["avancar", "Avançar", "Muito apoio e cruzamentos; deixam espaço nas costas e gastam mais."]
+        ["avancar", "Avançar", "Muito apoio pelos lados; deixam espaço nas costas e gastam mais."]
       ]
     },
     wingers: {
       label: "Pontas", key: "wingers",
       options: [
-        ["abertos", "Ficar abertos", "Amplitude e cruzamentos; menos presença central."],
+        ["abertos", "Ficar abertos", "Amplitude pelos lados; menos presença central."],
         ["equilibrio", "Equilibrado", "Comportamento padrão."],
         ["cortar", "Cortar para dentro", "Finalizam mais pelo centro e abrem espaço para o lateral subir."]
-      ]
-    },
-    crosses: {
-      label: "Cruzamentos", key: "crosses",
-      options: [
-        ["altos", "Altos", "Bolas na área; favorece cabeceio e atacantes altos."],
-        ["rasteiros", "Rasteiros", "Cruzamentos rasteiros; favorece velocidade e finalização de primeira."],
-        ["mistos", "Mistos", "Varia entre altos e rasteiros."]
       ]
     }
   };
 
   const DEFAULTS = {
     focus: "equilibrado", buildup: "misto", mentality: "equilibrada", tempo: "normal",
-    pressing: "media", line: "media", width: "equilibrada", fullbacks: "equilibrio",
-    wingers: "equilibrio", crosses: "mistos"
+    pressing: "media", marking: "zona", fullbacks: "equilibrio", wingers: "equilibrio"
   };
 
   function defaultTactics(formation) {
     return Object.assign({ formationName: formation || "4-4-2" }, DEFAULTS);
   }
 
-  /* Preenche defaults e migra o formato antigo { style, marking }. */
+  /* Preenche defaults e migra formatos antigos (§8). Saves antigos continuam
+     carregando; propriedades descontinuadas são removidas para não afetarem
+     o motor silenciosamente. */
   function normalize(t) {
     t = t || {};
     const out = Object.assign({}, DEFAULTS, t);
     out.formationName = FORMATIONS[t.formationName] ? t.formationName : (FORMATIONS[t.formation] ? t.formation : "4-4-2");
-    // migração de saves antigos
+
+    // --- formato muito antigo { style, marking(leve/pesada) } ---
     if (!t.mentality && t.style) out.mentality = t.style === "ataque" ? "ofensiva" : t.style === "retranca" ? "defensiva" : "equilibrada";
-    if (!t.pressing && t.marking) out.pressing = t.marking === "muito pesada" ? "alta" : t.marking === "pesada" ? "media" : "baixa";
-    if (!t.line && t.style) out.line = t.style === "ataque" ? "alta" : t.style === "retranca" ? "baixa" : "media";
-    // valida cada dimensão contra as opções conhecidas
+    if (!t.pressing && (t.marking === "leve" || t.marking === "pesada" || t.marking === "muito pesada"))
+      out.pressing = t.marking === "muito pesada" ? "alta" : t.marking === "pesada" ? "media" : "baixa";
+
+    // --- §8 Foco ofensivo enxuto ---
+    if (out.focus === "esquerda" || out.focus === "direita") out.focus = "lados";
+    if (out.focus === "bolas_longas") { out.focus = "equilibrado"; out.buildup = "bolaLonga"; }
+
+    // --- §8 remove dimensões descontinuadas (Linha defensiva, Largura, Cruzamentos) ---
+    // A antiga Linha defensiva vira Marcação por zona (o padrão), aplicado pela
+    // validação abaixo: qualquer marking antigo/inválido cai em "zona".
+    delete out.line; delete out.width; delete out.crosses; delete out.formation;
+
+    // valida cada dimensão contra as opções conhecidas (marking antigo → zona)
     for (const k of Object.keys(DIMENSIONS)) {
       const valid = DIMENSIONS[k].options.some(o => o[0] === out[k]);
       if (!valid) out[k] = DEFAULTS[k];
@@ -267,7 +261,7 @@
 
   const idx = (dim, val) => Math.max(0, DIMENSIONS[dim].options.findIndex(o => o[0] === val)); // 0..n
   const MENT = { muito_defensiva: -2, defensiva: -1, equilibrada: 0, ofensiva: 1, muito_ofensiva: 2 };
-  const TRI = { baixa: -1, media: 0, alta: 1, lento: -1, normal: 0, rapido: 1, estreita: -1, equilibrada: 0, aberta: 1, presos: -1, equilibrio: 0, avancar: 1, abertos: 1, cortar: -1 };
+  const TRI = { baixa: -1, media: 0, alta: 1, lento: -1, normal: 0, rapido: 1, presos: -1, equilibrio: 0, avancar: 1, abertos: 1, cortar: -1 };
 
   /* Converte a tática em ALAVANCAS numéricas que o motor lê. */
   function resolve(team) {
@@ -275,37 +269,34 @@
     const comp = FORMATIONS[t.formationName].comp;
     const m = MENT[t.mentality];                 // -2..2
     const press = TRI[t.pressing];               // -1..1
-    const line = TRI[t.line];                    // -1..1
     const tempo = TRI[t.tempo];                  // -1..1
-    const width = TRI[t.width];                  // -1..1
     const fb = TRI[t.fullbacks];                 // -1..1
     const wg = TRI[t.wingers];                   // 1 abertos / -1 cortar
     const focus = t.focus, build = t.buildup;
+    const manMark = t.marking === "homem";
+    // A antiga "linha defensiva" agora é derivada da mentalidade: quanto mais
+    // ofensivo, mais adiantada a linha (e mais espaço nas costas).
+    const line = m >= 1 ? 1 : m <= -1 ? -1 : 0; // -1..1
 
     // ---- distribuição das jogadas (setor de origem) ----
     // tendência natural da formação: pontas/laterais puxam para os lados
     let wideBase = 0.30 + comp.wideMen * 0.06 + comp.wingers * 0.05; // ~0.30..0.66
-    let left = 0.5, right = 0.5; // fração do ataque de lado que vai para cada lado
     if (focus === "lados") wideBase += 0.22;
     else if (focus === "meio") wideBase -= 0.20;
-    else if (focus === "esquerda") { wideBase += 0.20; left = 0.78; right = 0.22; }
-    else if (focus === "direita") { wideBase += 0.20; left = 0.22; right = 0.78; }
-    else if (focus === "bolas_longas") wideBase -= 0.05;
-    wideBase += width * 0.08 + (fb > 0 ? 0.05 : 0) + (wg > 0 ? 0.05 : wg < 0 ? -0.04 : 0);
+    wideBase += (fb > 0 ? 0.05 : 0) + (wg > 0 ? 0.05 : wg < 0 ? -0.04 : 0);
     const wide = clamp(wideBase, 0.12, 0.82);
-    const attCenterW = 1 - wide, attLeftW = wide * left, attRightW = wide * right;
+    const attCenterW = 1 - wide, attLeftW = wide * 0.5, attRightW = wide * 0.5;
 
     // ---- construção / diretividade ----
     let directness = 0.5, longBall = 0.12, midInvolve = 1;
     if (build === "trocaPasses") { directness = 0.22; midInvolve = 1.18; }
     else if (build === "misto") { directness = 0.5; midInvolve = 1; }
     else if (build === "ataqueRapido") { directness = 0.72; midInvolve = 0.9; }
-    else if (build === "bolaLonga") { directness = 0.9; longBall = 0.4; midInvolve = 0.72; }
-    if (focus === "bolas_longas") { longBall = Math.max(longBall, 0.42); directness = Math.max(directness, 0.82); midInvolve *= 0.8; }
+    else if (build === "bolaLonga") { directness = 0.9; longBall = 0.42; midInvolve = 0.72; }
     if (focus === "contra_ataque") directness = Math.max(directness, 0.6);
 
     // ---- posse (multiplica a força de meio para a partilha) ----
-    let possMult = 1 + midInvolve * 0.0; // base
+    let possMult = 1;
     possMult *= build === "trocaPasses" ? 1.14 : build === "bolaLonga" ? 0.85 : 1;
     possMult *= tempo === -1 ? 1.08 : tempo === 1 ? 0.94 : 1;
     possMult *= press > 0 ? 1.05 : press < 0 ? 0.98 : 1;
@@ -318,13 +309,13 @@
     if (focus === "contra_ataque") chanceVol -= 0.14; // menos ataques posicionais
     let chanceQual = 1 + (build === "ataqueRapido" ? 0.06 : 0) + (focus === "contra_ataque" ? 0.10 : 0);
 
-    // ---- cruzamentos / bola aérea ----
+    // ---- cruzamentos / bola aérea (o motor escolhe o tipo automaticamente
+    //      conforme a força aérea dos atacantes e a velocidade dos pontas) ----
     let crossFreq = 0.5 + comp.wingers * 0.06 + comp.fullbacks * 0.03;
-    crossFreq += focus === "lados" ? 0.28 : (focus === "esquerda" || focus === "direita") ? 0.2 : 0;
+    crossFreq += focus === "lados" ? 0.28 : 0;
     crossFreq += (t.wingers === "abertos" ? 0.12 : t.wingers === "cortar" ? -0.14 : 0) + (fb > 0 ? 0.14 : fb < 0 ? -0.1 : 0);
-    crossFreq += width * 0.08 + (build === "bolaLonga" ? 0.1 : 0);
+    crossFreq += (build === "bolaLonga" ? 0.1 : 0);
     crossFreq = clamp(crossFreq, 0.15, 1.6);
-    const crossHigh = t.crosses === "altos" ? 0.85 : t.crosses === "rasteiros" ? 0.15 : 0.5;
 
     // ---- contra-ataque ----
     let counter = focus === "contra_ataque" ? 0.7 : 0.12;
@@ -333,32 +324,39 @@
     counter = clamp(counter, 0, 0.85);
 
     // ---- forças de setor (mult) ----
-    let defMult = 1 - m * 0.05 + (line < 0 ? 0.04 : line > 0 ? -0.05 : 0) + (fb < 0 ? 0.04 : fb > 0 ? -0.04 : 0) + (width < 0 ? 0.03 : 0);
-    let midMult = 1 + (build === "trocaPasses" ? 0.06 : 0) + (focus === "meio" ? 0.08 : 0) + (comp.centralMids - 3) * 0.03 + (width < 0 ? 0.03 : 0);
+    // Marcação por zona protege a estrutura (leve bônus defensivo); homem a homem
+    // não reforça o bloco, mas sufoca os criadores adversários (manMarkDef, no motor).
+    let defMult = 1 - m * 0.05 + (line < 0 ? 0.04 : line > 0 ? -0.05 : 0) + (fb < 0 ? 0.04 : fb > 0 ? -0.04 : 0) + (t.marking === "zona" ? 0.03 : 0);
+    let midMult = 1 + (build === "trocaPasses" ? 0.06 : 0) + (focus === "meio" ? 0.08 : 0) + (comp.centralMids - 3) * 0.03;
     let attMult = 1 + m * 0.05 + (focus === "meio" ? 0.03 : 0);
     // pressão adversária alta reduz a criação de quem constrói curto — tratado no motor via oppPress
 
     // ---- espaço nas costas (vulnerabilidade) ----
-    let spaceBehind = 0.15 + (line > 0 ? 0.22 : line < 0 ? -0.08 : 0) + (press > 0 ? 0.14 : 0) + (fb > 0 ? 0.12 : 0) + (m >= 2 ? 0.1 : 0);
-    spaceBehind = clamp(spaceBehind, 0.02, 0.7);
+    // Marcação individual abre espaços quando um defensor persegue o seu marcado.
+    let spaceBehind = 0.15 + (line > 0 ? 0.16 : line < 0 ? -0.06 : 0) + (press > 0 ? 0.14 : 0) + (fb > 0 ? 0.12 : 0) + (m >= 2 ? 0.1 : 0) + (manMark ? 0.12 : 0);
+    spaceBehind = clamp(spaceBehind, 0.02, 0.75);
 
     // ---- desgaste ----
-    let energyMult = 1 + (tempo > 0 ? 0.14 : tempo < 0 ? -0.1 : 0) + (press > 0 ? 0.14 : press < 0 ? -0.06 : 0) + (m >= 1 ? 0.06 : 0) + (fb > 0 ? 0.05 : 0) + (t.wingers === "cortar" ? 0.03 : 0);
+    let energyMult = 1 + (tempo > 0 ? 0.14 : tempo < 0 ? -0.1 : 0) + (press > 0 ? 0.14 : press < 0 ? -0.06 : 0) + (m >= 1 ? 0.06 : 0) + (fb > 0 ? 0.05 : 0) + (manMark ? 0.1 : 0) + (t.wingers === "cortar" ? 0.03 : 0);
 
     // ---- faltas / cartões / recuperação alta ----
-    let foulMult = 1 + (press > 0 ? 0.28 : press < 0 ? -0.1 : 0) + (m <= -1 ? 0.08 : 0);
+    // Homem a homem = mais disputas próximas: mais faltas e cartões.
+    let foulMult = 1 + (press > 0 ? 0.28 : press < 0 ? -0.1 : 0) + (m <= -1 ? 0.08 : 0) + (manMark ? 0.16 : 0);
     let highRecovery = clamp(0.15 + press * 0.22, 0.02, 0.6); // chance de recuperar no ataque e forçar erro do rival
     let forcedError = clamp(press * 0.16, -0.05, 0.22);       // erro que ESTE time força no adversário (via pressing)
+    // marcação individual reduz a qualidade de criação do ADVERSÁRIO (lido no motor via oppLev.manMarkDef)
+    let manMarkDef = manMark ? 0.07 : 0;
 
     return {
       formationName: t.formationName, comp,
       attCenterW, attLeftW, attRightW, wide,
       directness, longBall, midInvolve,
       possMult, chanceVol: clamp(chanceVol, 0.7, 1.4), chanceQual: clamp(chanceQual, 0.85, 1.25),
-      crossFreq, crossHigh, counter,
+      crossFreq, counter,
       defMult: clamp(defMult, 0.85, 1.18), midMult: clamp(midMult, 0.85, 1.2), attMult: clamp(attMult, 0.85, 1.2),
-      spaceBehind, energyMult: clamp(energyMult, 0.82, 1.4), foulMult: clamp(foulMult, 0.8, 1.5),
-      highRecovery, forcedError, mentality: m, pressing: press, line, tempo
+      spaceBehind, energyMult: clamp(energyMult, 0.82, 1.4), foulMult: clamp(foulMult, 0.8, 1.55),
+      highRecovery, forcedError, manMark, manMarkDef, marking: t.marking,
+      mentality: m, pressing: press, line, tempo
     };
   }
 
@@ -376,14 +374,16 @@
     const atts = xi.filter(p => p.pos === "ATA");
     const zags = xi.filter(p => p.pos === "ZAG");
 
-    if ((t.focus === "lados" || t.crosses === "altos") && comp.wingers + comp.fullbacks < 2)
-      w.push("Ataque/cruzamentos pelos lados com poucos pontas e laterais.");
-    if (t.crosses === "altos" && atts.length && avg2(atts, p => p.skills.finishing) < 68 && !has(p => p.traits.includes("Cabeceio")))
-      w.push("Cruzamentos altos sem atacante forte no jogo aéreo.");
-    if (t.line === "alta" && zags.length && avg2(zags, p => p.skills.speed) < 62)
-      w.push("Linha alta com zagueiros lentos — risco em bolas em profundidade.");
+    if (t.focus === "lados" && comp.wingers + comp.fullbacks < 2)
+      w.push("Ataque pelas laterais com poucos pontas e laterais.");
+    if ((t.mentality === "ofensiva" || t.mentality === "muito_ofensiva") && zags.length && avg2(zags, p => p.skills.speed) < 62)
+      w.push("Mentalidade ofensiva adianta a linha; zagueiros lentos ficam expostos em profundidade.");
     if (t.pressing === "alta" && avg(p => p.energy) < 55)
       w.push("Pressão alta com o time cansado — desgaste e espaços atrás.");
+    if (t.marking === "homem" && avg(p => p.energy) < 55)
+      w.push("Marcação homem a homem com o time cansado — muito desgaste e faltas.");
+    if (t.marking === "homem" && zags.length && avg2(zags, p => p.skills.speed) < 60)
+      w.push("Marcação homem a homem com defensores lentos — risco ao perseguir os atacantes.");
     if (t.buildup === "trocaPasses" && avg(p => (p.skills.pass + p.skills.technique) / 2) < 62)
       w.push("Troca de passes com jogadores tecnicamente fracos.");
     if (t.buildup === "bolaLonga" && !has(p => p.pos === "ATA") && !has(p => p.traits.includes("Velocidade")))
@@ -402,15 +402,15 @@
   // Cada perfil é um conjunto de preferências que MUDAM as decisões da IA (não é rótulo).
   const PROFILES = {
     equilibrado: {},
-    ofensivo: { mentality: "ofensiva", pressing: "media", line: "media", tempo: "normal", fullbacks: "avancar" },
-    defensivo: { mentality: "defensiva", pressing: "baixa", line: "baixa", buildup: "misto", fullbacks: "presos" },
-    posse: { buildup: "trocaPasses", tempo: "lento", pressing: "media", focus: "meio", width: "estreita" },
+    ofensivo: { mentality: "ofensiva", pressing: "media", tempo: "normal", fullbacks: "avancar" },
+    defensivo: { mentality: "defensiva", pressing: "baixa", buildup: "misto", fullbacks: "presos", marking: "zona" },
+    posse: { buildup: "trocaPasses", tempo: "lento", pressing: "media", focus: "meio" },
     ataque_rapido: { buildup: "ataqueRapido", tempo: "rapido", mentality: "ofensiva" },
-    bola_longa: { buildup: "bolaLonga", focus: "bolas_longas", crosses: "altos" },
-    contra_ataque: { focus: "contra_ataque", mentality: "defensiva", line: "baixa", pressing: "baixa" },
-    lados: { focus: "lados", wingers: "abertos", fullbacks: "avancar", width: "aberta", crosses: "altos" },
-    meio: { focus: "meio", buildup: "trocaPasses", width: "estreita" },
-    pressao: { pressing: "alta", line: "alta", tempo: "rapido", mentality: "ofensiva" }
+    bola_longa: { buildup: "bolaLonga", focus: "equilibrado" },
+    contra_ataque: { focus: "contra_ataque", mentality: "defensiva", pressing: "baixa", marking: "homem" },
+    lados: { focus: "lados", wingers: "abertos", fullbacks: "avancar" },
+    meio: { focus: "meio", buildup: "trocaPasses" },
+    pressao: { pressing: "alta", tempo: "rapido", mentality: "ofensiva", marking: "homem" }
   };
   const PROFILE_KEYS = Object.keys(PROFILES);
 
@@ -457,9 +457,9 @@
     const t = Object.assign({}, normalize(tactics));
     const diff = ctx.myGoals - ctx.oppGoals; // >0 vencendo
     if (ctx.minute >= 60) {
-      if (diff <= -2) { t.mentality = "muito_ofensiva"; t.pressing = "alta"; t.line = "alta"; t.fullbacks = "avancar"; }
+      if (diff <= -2) { t.mentality = "muito_ofensiva"; t.pressing = "alta"; t.fullbacks = "avancar"; }
       else if (diff === -1) { t.mentality = stepMentality(t.mentality, 1); if (ctx.minute >= 75) t.pressing = "alta"; }
-      else if (diff >= 2 && ctx.minute >= 70) { t.mentality = "defensiva"; t.line = "baixa"; t.pressing = "baixa"; t.fullbacks = "presos"; }
+      else if (diff >= 2 && ctx.minute >= 70) { t.mentality = "defensiva"; t.pressing = "baixa"; t.fullbacks = "presos"; }
       else if (diff === 1 && ctx.minute >= 80) { t.mentality = stepMentality(t.mentality, -1); }
     }
     if (ctx.redCard) { t.mentality = stepMentality(t.mentality, -1); t.pressing = "baixa"; }
@@ -468,7 +468,7 @@
   }
 
   window.TF.tactics = {
-    FORMATIONS, FORMATION_NAMES, FORMATION_COORDS, FORMATION_SLOTS, DIMENSIONS, DEFAULTS, PROFILES, PROFILE_KEYS,
+    FORMATIONS, FORMATION_NAMES, FORMATION_COORDS, FORMATION_SLOTS, DIMENSIONS, GROUPS, DEFAULTS, PROFILES, PROFILE_KEYS,
     defaultTactics, normalize, resolve, warnings, composition, bestFormation, clubProfile, aiTactics, reactTactics, stepMentality
   };
 })();

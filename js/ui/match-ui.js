@@ -143,7 +143,7 @@
     // ---------- tela de gestão (pausa o jogo) ----------
     function openManagement() {
       if (manageOverlay || userGame.match.finished) return;
-      if (userGame.match.pendingPenalty || userGame.match.pendingInjury) return; // resolva a decisão primeiro
+      if (userGame.match.penalty || userGame.match.pendingInjury) return; // resolva a decisão primeiro
       pause();
       manageSel = null;
       manageOverlay = document.createElement("div");
@@ -378,7 +378,7 @@
       updateGrid();
       updateDetail();
 
-      if (userGame.match.pendingPenalty) { pause(); penaltyModal(); return; }
+      if (userGame.match.penalty) { pause(); penaltyScreen(); return; }
       if (userGame.match.pendingInjury) { pause(); injuryModal(); return; }
 
       const allDone = games.every(g => g.match.finished);
@@ -409,28 +409,87 @@
     }
 
     // ---------- decisões na hora ----------
-    function penaltyModal() {
-      const cands = userTeam.lineup.filter(s => s.player && s.slotPos !== "GOL")
-        .sort((a, b) => b.player.skills.finishing - a.player.skills.finishing);
-      UI().modal(
-        "<h3>⚽ PÊNALTI! Quem vai bater?</h3>" +
-        '<table class="data"><tbody>' +
-        cands.map(s => {
-          const p = s.player;
-          return '<tr data-taker="' + p.id + '" style="cursor:pointer"><td>' + UI().posBadge(s.slotPos) + "</td><td><b>" + esc(p.name) + "</b>" +
-            (p.traits.includes("Finalização") ? ' <span class="trait">Finalização</span>' : "") + "</td>" +
-            "<td class='num'>Finalização " + Math.round(p.skills.finishing) + "</td><td class='num'>Energia " + Math.round(p.energy) + "%</td></tr>";
-        }).join("") +
-        "</tbody></table>",
-        ov => {
-          ov.addEventListener("click", e => e.stopPropagation());
-          ov.querySelectorAll("[data-taker]").forEach(tr => tr.addEventListener("click", () => {
-            userGame.match.resolvePenalty(tr.dataset.taker);
-            ov.remove();
-            playSounds(); updateGrid(); updateDetail();
-            play();
-          }));
-        });
+    // Tela dedicada de PÊNALTI com tensão (§11-18): escolher batedor (se você ataca),
+    // frases de suspense com "Acelerar", e revelação (Gol/Defesa/Trave/Fora).
+    function penaltyScreen() {
+      const pen = userGame.match.penalty;
+      if (!pen) return;
+      S().play("penalty");
+      const ov = document.createElement("div");
+      ov.className = "modal-overlay penalty-overlay";
+      document.body.appendChild(ov);
+      let timers = [], done = false;
+      const clearTimers = () => { timers.forEach(t => clearTimeout(t)); timers = []; };
+      const render = html => { ov.innerHTML = '<div class="penalty-screen">' + html + "</div>"; };
+
+      function finishAndClose() {
+        if (done) return; done = true;
+        clearTimers();
+        userGame.match.finishPenalty();
+        ov.remove();
+        playSounds(); updateGrid(); updateDetail();
+        play();
+      }
+
+      function renderTakerChoice() {
+        const cands = pen.eligible.slice().sort((a, b) => b.finishing - a.finishing);
+        render(
+          '<div class="pen-badge">⚽ PÊNALTI</div>' +
+          '<div class="pen-head">' + esc(pen.club) + '</div>' +
+          '<div class="pen-sub">Quem vai bater?</div>' +
+          '<div class="pen-takers">' + cands.map(c =>
+            '<button class="pen-taker" data-taker="' + c.id + '">' +
+              '<span class="pen-pos">' + esc(c.pos) + '</span>' +
+              '<span class="pen-name">' + esc(c.name) + (c.star ? " ⭐" : "") + '</span>' +
+              '<span class="pen-stat">Fin ' + c.finishing + ' · ' + c.energy + '%</span>' +
+            "</button>").join("") + "</div>"
+        );
+        ov.querySelectorAll("[data-taker]").forEach(b => b.addEventListener("click", () => {
+          userGame.match.setPenaltyTaker(b.dataset.taker);
+          startSuspense();
+        }));
+      }
+
+      function startSuspense() {
+        const p = userGame.match.penalty;
+        const cobrador = p.userAttacking ? p.club : p.oppClub;
+        const phrases = M().PENALTY_SUSPENSE.slice().sort(() => Math.random() - 0.5).slice(0, 3);
+        let i = 0;
+        const step = () => {
+          if (i >= phrases.length) return reveal();
+          render(
+            '<div class="pen-badge">⚽ PÊNALTI</div>' +
+            '<div class="pen-head">' + esc(cobrador) + " na cobrança</div>" +
+            '<div class="pen-ball">⚽</div>' +
+            '<div class="pen-taker-name">' + esc(p.takerName || "") + "</div>" +
+            '<div class="pen-suspense">' + esc(phrases[i]) + "</div>" +
+            '<button class="btn" id="pen-skip">⏩ Acelerar</button>'
+          );
+          ov.querySelector("#pen-skip").addEventListener("click", () => { clearTimers(); reveal(); });
+          i++;
+          timers.push(setTimeout(step, 1100));
+        };
+        step();
+      }
+
+      function reveal() {
+        clearTimers();
+        const p = userGame.match.penalty;
+        const o = p.outcome;
+        const big = o === "goal" ? "GOL!" : o === "save" ? "DEFENDEU!" : o === "post" ? "NA TRAVE!" : "PRA FORA!";
+        const cls = o === "goal" ? "pen-goal" : "pen-miss";
+        S().play(o === "goal" ? "goal" : o === "save" ? "save" : "miss");
+        render(
+          '<div class="pen-result ' + cls + '">' + big + "</div>" +
+          '<div class="pen-result-sub">' + esc(p.takerName || "") + "</div>" +
+          '<button class="btn primary" id="pen-cont">Continuar</button>'
+        );
+        ov.querySelector("#pen-cont").addEventListener("click", finishAndClose);
+        timers.push(setTimeout(finishAndClose, 2800));
+      }
+
+      if (pen.userAttacking && !pen.takerId) renderTakerChoice();
+      else startSuspense();
     }
 
     function injuryModal() {

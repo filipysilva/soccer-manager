@@ -241,7 +241,12 @@
       const isThrough = !isLong && (isCounter || rng() < lev.directness * 0.5) && rng() < 0.6; // profundidade
       const isCross = !isLong && wingPlay && rng() < (0.25 + lev.crossFreq * 0.4);
       let headed = false;
-      if (isCross) headed = rng() < 0.35 + lev.crossHigh * 0.4;
+      if (isCross) {
+        // o motor escolhe o tipo de cruzamento: times com forte jogo aéreo cruzam
+        // alto (cabeceio); os de pouca presença aérea buscam o rasteiro.
+        const aerialBias = U.clamp((stA.aerialAtt - 52) / 40, 0, 1); // 0..1
+        headed = rng() < 0.24 + aerialBias * 0.5;
+      }
       else if (isLong) headed = rng() < 0.5;
       else headed = rng() < 0.14;
 
@@ -269,6 +274,9 @@
       if (fromPress) attPower *= 1.15;                                // erro forçado pela pressão
       let create = attPower / (attPower + defPower);
       create *= lev.chanceQual;
+      // marcação individual do adversário sufoca a criação em jogadas posicionais,
+      // mas nada faz contra corridas em profundidade e contra-ataques (que a exploram).
+      if (defLev.manMarkDef && !isCounter && !isThrough) create *= 1 - defLev.manMarkDef;
 
       if (rng() > create * 1.12) {
         if (rng() < 0.4) {
@@ -306,7 +314,8 @@
         if (!h.press && s.lev.pressing > 0 && state.stats[s.key].recov >= 3) { h.press = 1; return log(min, "hint", "A pressão alta está forçando erros do adversário.", s); }
         if (!h.behind && s.other.lev.counter > 0.4 && s.lev.spaceBehind > 0.45 && st.attCenter + atksWide > 8) { h.behind = 1; return log(min, "hint", "Cuidado: os laterais estão deixando espaços nas costas.", s); }
         if (!h.tired && avgEnergy(s) < 55) { h.tired = 1; return log(min, "hint", "O time demonstra cansaço pelo ritmo intenso.", s); }
-        if (!h.cross && st.crosses >= 6 && st.crossGoals === 0 && s.lev.crossHigh > 0.6) { h.cross = 1; return log(min, "hint", "Os cruzamentos altos não estão funcionando.", s); }
+        if (!h.cross && st.crosses >= 7 && st.crossGoals === 0) { h.cross = 1; return log(min, "hint", "Os cruzamentos não estão encontrando os atacantes.", s); }
+        if (!h.mark && s.lev.manMark && min >= 30 && state.stats[s.other.key].target <= 1) { h.mark = 1; return log(min, "hint", "A marcação individual está anulando os criadores adversários.", s); }
       }
     }
     function avgEnergy(s) {
@@ -396,43 +405,109 @@
         (b.player.skills.technique + b.player.skills.finishing) - (a.player.skills.technique + a.player.skills.finishing))[0];
     }
 
-    function penaltyEvent(att, min) {
-      log(min, "penalty", "PÊNALTI para " + att.team.club.name + "!", att);
-      // técnico humano escolhe o batedor na hora
-      if (opts.interactiveSide && opts.interactiveSide === att.key) {
-        state.pendingPenalty = { sideKey: att.key, min };
-        return;
-      }
-      takePenalty(att, bestPenaltyTaker(att.team.lineup), min);
+    // Um lado é controlado por humano? Offline: opts.interactiveSide (1 lado).
+    // Online: opts.humanSides (array com "h" e/ou "a").
+    function isHumanSide(key) {
+      if (opts.humanSides) return opts.humanSides.indexOf(key) >= 0;
+      return opts.interactiveSide === key;
     }
 
-    function takePenalty(att, taker, min) {
-      if (!taker || !taker.player) return;
+    /* PÊNALTI (§11-18) — máquina de estados com tensão.
+       Sem humano no jogo: resolve na hora. Com humano: cria state.penalty; a tela
+       (offline/online) toca as fases, o humano atacante escolhe o batedor, e
+       finishPenalty aplica o resultado ao placar. */
+    function penaltyEvent(att, min) {
+      const def = att.other;
+      log(min, "penalty", "PÊNALTI para " + att.team.club.name + "!", att);
+      // humano em cada lado: offline usa interactiveSide (1 lado); online usa humanSides (0-2 lados)
+      const attHuman = isHumanSide(att.key), defHuman = isHumanSide(def.key);
+      if (!attHuman && !defHuman) { // sem humano envolvido: resolve imediatamente, sem tela
+        const taker = bestPenaltyTaker(att.team.lineup);
+        applyPenaltyOutcome(att, taker, computePenaltyOutcome(att, taker), min);
+        return;
+      }
+      const elig = starters(att.team.lineup).filter(s => s.slotPos !== "GOL");
+      const gkP = def.team.lineup[0] && def.team.lineup[0].player;
+      const pen = {
+        sideKey: att.key, attKey: att.key, min,
+        club: att.team.club.name, oppClub: def.team.club.name,
+        userAttacking: attHuman,
+        userDefending: defHuman,
+        eligible: elig.map(s => ({ id: s.player.id, name: s.player.name, pos: s.slotPos, finishing: Math.round(effSkill(s.player, "finishing", s.slotPos)), energy: Math.round(s.player.energy), star: !!s.player.star })),
+        gkName: gkP ? gkP.name : "",
+        takerId: null, takerName: null, outcome: null, applied: false
+      };
+      if (!pen.userAttacking) {
+        // usuário é o lado que defende: a IA escolhe o batedor e o resultado já fica definido
+        const taker = bestPenaltyTaker(att.team.lineup);
+        pen.takerId = taker.player.id; pen.takerName = taker.player.name;
+        pen.outcome = computePenaltyOutcome(att, taker);
+      }
+      state.penalty = pen;
+    }
+
+    function computePenaltyOutcome(att, taker) {
       const def = att.other;
       const gkSlot = def.team.lineup[0];
       const gkSkill = gkSlot && gkSlot.player ? effSkill(gkSlot.player, "gk", "GOL") : 25;
       const gkBonus = gkSlot && gkSlot.player && hasTrait(gkSlot.player, "Defesa de pênalti") ? 14 : 0;
       const skill = effSkill(taker.player, "finishing", taker.slotPos);
-      if (rng() < U.clamp(skill / (skill + (gkSkill + gkBonus) * 0.62), 0.5, 0.9)) {
-        goal(att, taker, min, "de pênalti");
+      const pGoal = U.clamp(skill / (skill + (gkSkill + gkBonus) * 0.62), 0.5, 0.9);
+      if (rng() < pGoal) return "goal";
+      const r = rng();                 // divide o erro: defesa / para fora / na trave
+      return r < 0.55 ? "save" : r < 0.8 ? "wide" : "post";
+    }
+
+    function applyPenaltyOutcome(att, taker, outcome, min) {
+      if (!taker || !taker.player) return;
+      if (outcome === "goal") {
+        goal(att, taker, min, "de pênalti", true); // §23 sem assistência em gol de pênalti
       } else {
-        addRating(gkSlot && gkSlot.player, 1.0);
+        const gkSlot = att.other.team.lineup[0];
+        addRating(gkSlot && gkSlot.player, outcome === "save" ? 1.0 : 0.2);
         addRating(taker.player, -0.6);
         taker.player.moral = U.clamp(taker.player.moral - 8, 0, 100);
-        log(min, "miss", taker.player.name + " desperdiça o pênalti!", att);
+        const msg = outcome === "save" ? "Defesa! O goleiro pega a cobrança de " + taker.player.name + "!"
+          : outcome === "post" ? taker.player.name + " carimba a trave!"
+            : taker.player.name + " manda para fora!";
+        log(min, "miss", msg, att);
       }
     }
 
-    /* UI resolve o pênalti pendente com o batedor escolhido. */
-    function resolvePenalty(takerId) {
-      const pend = state.pendingPenalty;
-      if (!pend) return { ok: false };
-      state.pendingPenalty = null;
-      const att = pend.sideKey === "h" ? sides[0] : sides[1];
+    /* Técnico humano escolhe o batedor; calcula (sem aplicar) o resultado e o retorna. */
+    function setPenaltyTaker(takerId) {
+      const pen = state.penalty;
+      if (!pen || pen.applied) return null;
+      const att = pen.attKey === "h" ? sides[0] : sides[1];
       let taker = att.team.lineup.find(s => s.player && s.player.id === takerId && s.slotPos !== "GOL");
       if (!taker) taker = bestPenaltyTaker(att.team.lineup);
-      takePenalty(att, taker, pend.min);
-      return { ok: true };
+      pen.takerId = taker.player.id; pen.takerName = taker.player.name;
+      pen.outcome = computePenaltyOutcome(att, taker);
+      return pen.outcome;
+    }
+
+    /* Aplica o resultado ao placar e encerra o pênalti (fim da tela). */
+    function finishPenalty() {
+      const pen = state.penalty;
+      if (!pen) return { ok: false };
+      if (!pen.applied) {
+        const att = pen.attKey === "h" ? sides[0] : sides[1];
+        const taker = att.team.lineup.find(s => s.player && s.player.id === pen.takerId && s.slotPos !== "GOL") || bestPenaltyTaker(att.team.lineup);
+        if (!pen.outcome) pen.outcome = computePenaltyOutcome(att, taker);
+        applyPenaltyOutcome(att, taker, pen.outcome, pen.min);
+        pen.applied = true;
+      }
+      const out = pen.outcome;
+      state.penalty = null;
+      return { ok: true, outcome: out };
+    }
+
+    /* Compatibilidade: resolve o pênalti num passo só (escolhe batedor + aplica). */
+    function resolvePenalty(takerId) {
+      const pen = state.penalty;
+      if (!pen) return { ok: false };
+      if (!pen.applied && !pen.outcome) setPenaltyTaker(takerId || pen.takerId);
+      return finishPenalty();
     }
 
     function bestPenaltyTaker(lineup) {
@@ -521,7 +596,7 @@
 
     function playMinute() {
       if (finished) return;
-      if (state.pendingPenalty || state.pendingInjury) return; // aguardando decisão do técnico
+      if (state.penalty || state.pendingInjury) return; // aguardando decisão do técnico
       if (phase === "halftime") phase = "second";
       clock++;
       refreshLevers(); // pega mudanças táticas ao vivo
@@ -661,16 +736,17 @@
 
     return {
       home: homeTeam, away: awayTeam, events, state,
-      playMinute, substitute, result, resolvePenalty, resolveInjury, swapPositions,
+      playMinute, substitute, result, resolvePenalty, setPenaltyTaker, finishPenalty, resolveInjury, swapPositions,
       get phase() { return phase; },
       get finished() { return finished; },
       get minute() { return state.minute; },
-      get pendingPenalty() { return state.pendingPenalty || null; },
+      get penalty() { return state.penalty || null; },
+      get pendingPenalty() { return state.penalty || null; }, // compat
       get pendingInjury() { return state.pendingInjury || null; },
       resumeSecondHalf() { if (phase === "halftime") phase = "second"; },
       finishNow() {
         while (!finished) {
-          if (state.pendingPenalty) resolvePenalty(null);
+          if (state.penalty) resolvePenalty(null);
           if (state.pendingInjury) {
             const side = state.pendingInjury.sideKey === "h" ? sides[0] : sides[1];
             const best = side.team.bench.filter(p => !p.injuryWeeks)[0];
@@ -759,5 +835,16 @@
     return { ok: true, formationName };
   }
 
-  window.TF.match = { FORMATIONS, FORMATION_COORDS, createMatch, simulate, pickLineup, bestFormationFor, reformTeam, teamStrength, positionFactor };
+  // Frases de suspense da cobrança de pênalti (a tela sorteia algumas).
+  const PENALTY_SUSPENSE = [
+    "O batedor coloca a bola na marca da cal…",
+    "Silêncio total no estádio.",
+    "O goleiro escolhe o canto e dança na linha.",
+    "A torcida prende a respiração.",
+    "Ele respira fundo e mede os passos.",
+    "Tensão máxima — é agora.",
+    "O árbitro apita e autoriza a cobrança."
+  ];
+
+  window.TF.match = { FORMATIONS, FORMATION_COORDS, createMatch, simulate, pickLineup, bestFormationFor, reformTeam, teamStrength, positionFactor, PENALTY_SUSPENSE };
 })();

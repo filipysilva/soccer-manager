@@ -154,12 +154,16 @@
   // ---------- painel tático reutilizável (offline) ----------
   function tacticsSelects(t) {
     const D = window.TF.tactics.DIMENSIONS;
-    return Object.keys(D).map(k => {
-      const dim = D[k];
-      return '<label class="tac-sel"><span class="muted">' + dim.label + "</span><select data-tac=\"" + k + "\">" +
+    const G = window.TF.tactics.GROUPS || {};
+    let html = "", curGroup = null;
+    for (const k of Object.keys(D)) {
+      const dim = D[k], g = G[k];
+      if (g && g !== curGroup) { html += '<div class="tac-group">' + esc(g) + "</div>"; curGroup = g; }
+      html += '<label class="tac-sel"><span class="muted">' + dim.label + "</span><select data-tac=\"" + k + "\">" +
         dim.options.map(o => '<option value="' + o[0] + '"' + (t[k] === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>").join("") +
         "</select></label>";
-    }).join("");
+    }
+    return html;
   }
   function tacticsDescriptions(t) {
     const D = window.TF.tactics.DIMENSIONS;
