@@ -46,7 +46,7 @@
       { id: "dashboard", icon: "🏠", label: "Visão geral" },
       { id: "squad", icon: "👥", label: "Elenco" },
       { id: "lineup", icon: "📋", label: "Escalação" },
-      { id: "coach", icon: "🎩", label: "Técnico" }
+      { id: "coach", icon: "🎩", label: "Perfil" }
     ] },
     { group: "Competição", items: [
       { id: "table", icon: "🏆", label: "Classificação" },

@@ -933,21 +933,44 @@
   };
 
   // ---------------- TÉCNICO ----------------
+  function coachLevel(points) {
+    if (points >= 300) return "Lenda";
+    if (points >= 180) return "Ídolo";
+    if (points >= 90) return "Renomado";
+    if (points >= 35) return "Respeitado";
+    return "Promissor";
+  }
   S.coach = function (el) {
     const st = G().state;
     const c = st.coach;
+    const club = G().userClub();
+    const titles = c.titles || [];
+    // agrupa por competição
+    const byComp = {};
+    for (const t of titles) { (byComp[t.name] = byComp[t.name] || []).push(t.year); }
+    const trophies = Object.keys(byComp).map(name => ({ name, years: byComp[name].sort((a, b) => a - b), count: byComp[name].length }))
+      .sort((a, b) => b.count - a.count);
+
     el.innerHTML =
-      "<h2>Carreira do técnico</h2>" +
-      '<div class="grid2">' +
-        '<div class="card"><h3 style="margin-top:0">' + esc(c.name) + "</h3>" +
-          "<p>Clube: <b>" + esc(G().userClub().name) + "</b></p>" +
-          "<p>Reputação: " + barHtml(c.reputation, "var(--gold)") + " " + Math.round(c.reputation) + "/100</p>" +
-          "<p>Pontos no ranking: <b>" + Math.round(c.points) + "</b></p>" +
+      "<h2>Perfil do técnico</h2>" +
+      '<div class="profile-head card">' +
+        '<div class="ph-avatar">🎩</div>' +
+        '<div class="ph-info"><div class="ph-name">' + esc(c.name) + '</div>' +
+          '<div class="muted">' + U.joinDot(coachLevel(c.points), esc(club.name), U.formatSeasonLabel(st.season.year)) + "</div>" +
+          '<div class="ph-rep"><span class="muted">Reputação</span>' + barHtml(c.reputation, "var(--gold)") + "<span>" + Math.round(c.reputation) + "/100</span></div>" +
         "</div>" +
-        '<div class="card"><h3 style="margin-top:0">🏆 Títulos (' + c.titles.length + ")</h3>" +
-          (c.titles.length ? "<ul style='padding-left:18px'>" + c.titles.map(t => "<li>" + esc(t.name) + " — " + t.year + "</li>").join("") + "</ul>" : "<p class='muted'>Nenhum título ainda. Vamos mudar isso!</p>") +
+        '<div class="ph-stats">' +
+          '<div class="ph-stat"><div class="v">' + titles.length + '</div><div class="l">títulos</div></div>' +
+          '<div class="ph-stat"><div class="v">' + Math.round(c.points) + '</div><div class="l">pontos</div></div>' +
         "</div>" +
-      "</div>";
+      "</div>" +
+      '<h3>🏆 Sala de troféus</h3>' +
+      (trophies.length ?
+        '<div class="trophy-grid">' + trophies.map(t =>
+          '<div class="trophy-card"><div class="tc-cup">🏆</div><div class="tc-name">' + esc(t.name) + '</div>' +
+            '<div class="tc-years">' + t.years.join(", ") + "</div>" +
+            (t.count > 1 ? '<div class="tc-count">×' + t.count + "</div>" : "") + "</div>").join("") + "</div>"
+        : '<div class="card empty-trophies"><div style="font-size:2.4rem">🗄️</div><p class="muted">A sala de troféus está vazia. Conquiste títulos para preenchê-la!</p></div>');
   };
 
   // ---------------- OPÇÕES ----------------

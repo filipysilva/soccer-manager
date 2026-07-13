@@ -403,6 +403,25 @@ tr.sug-row td:first-child { box-shadow: inset 3px 0 0 var(--green); }
 .dn-title { font-weight: 600; font-size: .9rem; }
 @media (max-width: 860px) { .dash-grid { grid-template-columns: 1fr; } }
 
+/* ---------- Perfil / Sala de troféus ---------- */
+.profile-head { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.ph-avatar { font-size: 2.6rem; width: 68px; height: 68px; border-radius: 50%; background: var(--bg3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.ph-info { flex: 1; min-width: 200px; }
+.ph-name { font-size: 1.35rem; font-weight: 800; }
+.ph-rep { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: .82rem; }
+.ph-rep .bar { flex: 1; max-width: 220px; }
+.ph-stats { display: flex; gap: 22px; }
+.ph-stat { text-align: center; }
+.ph-stat .v { font-size: 1.6rem; font-weight: 800; color: var(--gold); }
+.ph-stat .l { color: var(--muted); font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; }
+.trophy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.trophy-card { position: relative; background: linear-gradient(160deg, color-mix(in srgb, var(--gold) 22%, var(--card)), var(--card)); border: 1px solid color-mix(in srgb, var(--gold) 40%, var(--border)); border-radius: 12px; padding: 16px 12px; text-align: center; }
+.tc-cup { font-size: 2.2rem; }
+.tc-name { font-weight: 700; font-size: .92rem; margin-top: 6px; }
+.tc-years { color: var(--muted); font-size: .78rem; margin-top: 3px; }
+.tc-count { position: absolute; top: 8px; right: 10px; font-weight: 800; color: var(--gold); }
+.empty-trophies { text-align: center; padding: 30px; }
+
 /* ---------- Tela de PÊNALTI (tensão) — §11-18 ---------- */
 .penalty-overlay { z-index: 60; }
 .penalty-screen { background: linear-gradient(160deg, #0b3d1e, #05210f); color: #fff; border-radius: 16px; padding: 26px 24px; min-width: 300px; max-width: 440px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.5); animation: pen-in .18s ease-out; }
