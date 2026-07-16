@@ -211,6 +211,14 @@ function pauseState(room) {
 }
 function broadcastPause(room) { broadcast(room, "pauseState", pauseState(room)); }
 
+// Estatísticas compactas de um jogo para a aba de estatísticas online.
+function liveStats(match) {
+  const s = match.state.stats;
+  const tot = s.h.poss + s.a.poss || 1;
+  const line = x => ({ poss: Math.round(100 * s[x].poss / tot), shots: s[x].shots, target: s[x].target, corners: s[x].corners, fouls: s[x].fouls });
+  return { h: line("h"), a: line("a") };
+}
+
 // Snapshot da rodada ao vivo para quem (re)conecta no meio dela (§10 reconexão).
 function liveSnapshot(room) {
   const live = room.live;
@@ -225,6 +233,7 @@ function liveSnapshot(room) {
       humanH: g.entry.humanH, humanA: g.entry.humanA,
       lineups: { h: lineup(g.entry.home), a: lineup(g.entry.away) },
       gh: g.match.state.gh, ga: g.match.state.ga, min: g.match.minute, ph: g.match.phase, fin: g.match.finished,
+      stats: liveStats(g.match),
       events: g.match.events.map(ev => ({ i, min: ev.min, type: ev.type, text: ev.text }))
     })),
     pause: pauseState(room),
@@ -298,7 +307,7 @@ function tickRound(room) {
       const ev = g.match.events[g.shown++];
       newEvents.push({ i, min: ev.min, type: ev.type, text: ev.text });
     }
-    updates.push({ i, gh: g.match.state.gh, ga: g.match.state.ga, min: g.match.minute, ph: g.match.phase, fin: g.match.finished });
+    updates.push({ i, gh: g.match.state.gh, ga: g.match.state.ga, min: g.match.minute, ph: g.match.phase, fin: g.match.finished, stats: liveStats(g.match) });
   }
 
   // Quando TODOS os jogos ativos convergem para o intervalo: rodada só de IA retoma

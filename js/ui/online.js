@@ -125,7 +125,7 @@
       const d = JSON.parse(e.data);
       for (const u of d.m || []) {
         const m = st.live.matches[u.i];
-        if (m) { m.gh = u.gh; m.ga = u.ga; m.min = u.min; m.ph = u.ph; m.fin = u.fin; }
+        if (m) { m.gh = u.gh; m.ga = u.ga; m.min = u.min; m.ph = u.ph; m.fin = u.fin; if (u.stats) m.stats = u.stats; }
       }
       for (const ev of d.ev || []) {
         const m = st.live.matches[ev.i];
@@ -1463,14 +1463,39 @@
     const el = $("#detail");
     if (!el || !live) return;
     const m = live.matches[live.selected];
+    const tab = st._rdTab || "narracao";
+    const tb = (id, label) => '<button class="mtab' + (tab === id ? " active" : "") + '" data-rdtab="' + id + '">' + label + "</button>";
     el.innerHTML =
       '<div class="scoreboard" style="margin-top:14px">' +
         '<div class="team">' + crest(m.home, 40) + "<span>" + esc(m.home.name) + "</span></div>" +
         '<div><div class="score" id="rd-score"></div><div class="minute" id="rd-min"></div></div>' +
         '<div class="team right">' + crest(m.away, 40) + "<span>" + esc(m.away.name) + "</span></div>" +
       "</div>" +
-      '<div class="match-events" id="rd-events" style="height:260px"></div>';
+      '<div class="mtabs">' + tb("narracao", "Lance a lance") + tb("stats", "Estatísticas") + tb("lineups", "Escalações") + "</div>" +
+      '<div class="mpane" id="rd-pane"></div>';
+    el.querySelectorAll("[data-rdtab]").forEach(b => b.addEventListener("click", () => { st._rdTab = b.dataset.rdtab; buildDetail(); }));
+    renderRoundPane();
     updateRound();
+  }
+
+  function renderRoundPane() {
+    const live = st.live; if (!live) return;
+    const m = live.matches[live.selected];
+    const pane = $("#rd-pane"); if (!pane) return;
+    const tab = st._rdTab || "narracao";
+    if (tab === "narracao") {
+      pane.innerHTML = '<div class="match-events" id="rd-events" style="height:300px"></div>';
+    } else if (tab === "stats") {
+      pane.innerHTML = '<div class="match-stats" id="rd-stats"></div>';
+    } else {
+      const col = (side) => {
+        const rows = ((m.lineups && m.lineups[side]) || []).filter(s => s.name).map(s =>
+          '<div class="lu-row"><span class="lu-pos pos-' + s.pos + '">' + s.pos + '</span><span class="lu-name">' + esc(s.name) + "</span></div>").join("");
+        const club = side === "h" ? m.home : m.away;
+        return '<div class="lu-col"><div class="lu-club">' + crest(club, 18) + esc(club.shortName || club.name) + "</div>" + rows + "</div>";
+      };
+      pane.innerHTML = '<div class="lineups-grid">' + col("h") + col("a") + "</div>";
+    }
   }
 
   function updateRound() {
@@ -1488,15 +1513,25 @@
     const sc = $("#rd-score");
     if (sc && m) {
       sc.textContent = m.gh + " x " + m.ga;
-      $("#rd-min").textContent = m.fin ? "Fim de jogo" : m.ph === "halftime" ? "Intervalo" : m.min + "'";
+      $("#rd-min").textContent = m.fin ? "Fim de jogo" : m.ph === "halftime" ? "Intervalo" : m.ph === "shootout" ? "Pênaltis" : m.min + "'";
       const box = $("#rd-events");
-      while (box.children.length < m.events.length) {
+      if (box) while (box.children.length < m.events.length) {
         const ev = m.events[box.children.length];
         const div = document.createElement("div");
         div.className = "ev " + ev.type;
         div.innerHTML = '<span class="min">' + ev.min + "'</span><span>" + esc(ev.text) + "</span>";
         box.appendChild(div);
         box.scrollTop = box.scrollHeight;
+      }
+      const stBox = $("#rd-stats");
+      if (stBox && m.stats) {
+        const row = (a, n, b) => '<div class="sh">' + a + '</div><div class="sname">' + n + '</div><div class="sa">' + b + "</div>";
+        stBox.innerHTML =
+          row(m.stats.h.poss + "%", "Posse", m.stats.a.poss + "%") +
+          row(m.stats.h.shots, "Finalizações", m.stats.a.shots) +
+          row(m.stats.h.target, "No gol", m.stats.a.target) +
+          row(m.stats.h.corners, "Escanteios", m.stats.a.corners) +
+          row(m.stats.h.fouls, "Faltas", m.stats.a.fouls);
       }
     }
   }
