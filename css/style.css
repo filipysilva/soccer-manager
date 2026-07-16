@@ -392,6 +392,16 @@ tr.sug-row td:first-child { box-shadow: inset 3px 0 0 var(--green); }
 .res-badge.res-E { background: var(--muted); }
 .res-badge.res-D { background: var(--red); }
 
+/* Chat como drawer lateral (§35) */
+.chat-fab { position: fixed; right: 18px; bottom: 18px; width: 52px; height: 52px; border-radius: 50%; background: var(--green); color: #fff; border: none; font-size: 1.4rem; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,.35); z-index: 40; }
+.chat-fab:hover { filter: brightness(1.08); }
+.chat-badge { position: absolute; top: -2px; right: -2px; background: var(--red); color: #fff; border-radius: 999px; font-size: .66rem; font-weight: 800; min-width: 18px; height: 18px; line-height: 18px; padding: 0 4px; }
+.chat-drawer { position: fixed; top: 0; right: 0; height: 100vh; width: 320px; max-width: 88vw; background: var(--bg2); border-left: 1px solid var(--border); box-shadow: -8px 0 30px rgba(0,0,0,.3); transform: translateX(100%); transition: transform .22s ease; z-index: 45; display: flex; flex-direction: column; }
+.chat-drawer.open { transform: translateX(0); }
+.chat-drawer-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.chat-drawer-log { flex: 1; overflow-y: auto; padding: 12px 14px; font-size: .9rem; }
+.chat-drawer-log > div { margin-bottom: 5px; }
+
 /* ---------- util ---------- */
 .muted { color: var(--muted); }
 .money-neg { color: var(--red); }

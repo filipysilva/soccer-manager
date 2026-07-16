@@ -105,6 +105,7 @@
       if (st.chatLog.length > 60) st.chatLog.shift();
       const box = $("#chat-log");
       if (box) { box.innerHTML = chatHtml(); box.scrollTop = box.scrollHeight; }
+      if (!st._chatOpen) { st._chatUnread = (st._chatUnread || 0) + 1; updateChatBadge(); } // §35 badge de não-lidas
     });
     es.addEventListener("info", e => toast(JSON.parse(e.data).text));
     es.addEventListener("roundStart", e => {
@@ -415,6 +416,25 @@
     if (inp) inp.addEventListener("keydown", e => { if (e.key === "Enter") send(); });
   }
 
+  // §35 chat como drawer lateral
+  function updateChatBadge() {
+    const b = $("#chat-badge");
+    if (!b) return;
+    if (st._chatUnread) { b.textContent = st._chatUnread > 9 ? "9+" : st._chatUnread; b.style.display = ""; }
+    else b.style.display = "none";
+  }
+  function openChatDrawer() {
+    const d = $("#chat-drawer"); if (d) d.classList.add("open");
+    st._chatOpen = true; st._chatUnread = 0; updateChatBadge();
+    const log = $("#chat-log"); if (log) log.scrollTop = log.scrollHeight;
+    const inp = $("#chat-in"); if (inp) inp.focus();
+  }
+  function closeChatDrawer() { const d = $("#chat-drawer"); if (d) d.classList.remove("open"); st._chatOpen = false; }
+  function toggleChatDrawer(force) {
+    const open = force === undefined ? !st._chatOpen : force;
+    if (open) openChatDrawer(); else closeChatDrawer();
+  }
+
   // ---------- tela principal da sala ----------
   // §22 menu agrupado
   const TAB_GROUPS = [
@@ -422,7 +442,7 @@
     ["Meu time", [["squad", "👥 Elenco"], ["lineup", "📋 Escalação"]]],
     ["Competição", [["table", "🏆 Tabela"], ["cup", "🏅 Copa"], ["ranking", "🎖️ Ranking"], ["calendar", "📅 Calendário"], ["clubs", "🏟️ Clubes"]]],
     ["Gestão", [["transfers", "💱 Transferências"], ["finances", "💰 Finanças"]]],
-    ["Sala", [["news", "📰 Notícias"], ["chat", "💬 Chat"]]]
+    ["Sala", [["news", "📰 Notícias"]]]
   ];
 
   function renderGame(app) {
@@ -458,8 +478,19 @@
           ).join("") +
         "</nav>" +
         '<div class="content" id="content"></div>' +
+      "</div>" +
+      // §35 chat como drawer lateral + botão flutuante
+      '<button class="chat-fab" id="chat-fab" title="Chat da sala">💬<span class="chat-badge" id="chat-badge" style="display:none"></span></button>' +
+      '<div class="chat-drawer" id="chat-drawer">' +
+        '<div class="chat-drawer-head"><b>Chat da sala</b><button class="btn" id="chat-close">✕</button></div>' +
+        '<div id="chat-log" class="chat-drawer-log">' + chatHtml() + "</div>" +
+        '<div class="row" style="padding:10px"><input id="chat-in" placeholder="Mensagem..." style="flex:1" maxlength="300"><button class="btn" id="chat-send">Enviar</button></div>' +
       "</div>";
     app.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => { st.tab = b.dataset.tab; render(); }));
+    $("#chat-fab").addEventListener("click", () => toggleChatDrawer());
+    $("#chat-close").addEventListener("click", () => toggleChatDrawer(false));
+    bindChat();
+    if (st._chatOpen) openChatDrawer();
     $("#btn-ready").addEventListener("click", async () => {
       const now = !(meP && meP.ready);
       await api("ready", { ready: now });
