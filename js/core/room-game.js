@@ -595,7 +595,7 @@
     function serializeClub(c, full) {
       return {
         id: c.id, name: c.name, shortName: c.shortName, division: c.division, rating: c.rating,
-        countryId: c.countryId,
+        countryId: c.countryId, nation: c.nation, titles: c.titles || [],
         stadium: c.stadium, capacity: c.capacity, crest: c.crest, money: c.money,
         moralTorcida: c.moralTorcida, ticketPrice: c.ticketPrice, grass: c.grass,
         stadiumWorks: c.stadiumWorks || null,

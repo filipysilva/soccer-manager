@@ -416,10 +416,13 @@
   }
 
   // ---------- tela principal da sala ----------
-  const TABS = [
-    ["rodada", "▶ Rodada"], ["squad", "👥 Elenco"], ["lineup", "📋 Escalação"],
-    ["table", "🏆 Tabela"], ["clubs", "🏟️ Clubes"], ["cup", "🏅 Copa"], ["transfers", "💱 Transferências"],
-    ["finances", "💰 Finanças"], ["news", "📰 Notícias"], ["chat", "💬 Chat"]
+  // §22 menu agrupado
+  const TAB_GROUPS = [
+    ["Rodada", [["rodada", "▶ Rodada"]]],
+    ["Meu time", [["squad", "👥 Elenco"], ["lineup", "📋 Escalação"]]],
+    ["Competição", [["table", "🏆 Tabela"], ["cup", "🏅 Copa"], ["ranking", "🎖️ Ranking"], ["clubs", "🏟️ Clubes"]]],
+    ["Gestão", [["transfers", "💱 Transferências"], ["finances", "💰 Finanças"]]],
+    ["Sala", [["news", "📰 Notícias"], ["chat", "💬 Chat"]]]
   ];
 
   function renderGame(app) {
@@ -431,22 +434,28 @@
     const meP = st.lobby ? me() : null;
     const readyCount = st.lobby ? st.lobby.players.filter(p => p.ready).length : 0;
     const onlineCount = st.lobby ? st.lobby.players.filter(p => p.online).length : 0;
+    const clubSub = U.joinDot("Sala " + st.session.code, esc(st.session.name), "Série " + club.division);
     app.innerHTML =
       '<div class="topbar">' +
-        crest(club, 42) +
-        '<div class="club-info"><div class="club-name">' + esc(club.name) + '</div>' +
-        '<div class="club-sub">Sala ' + esc(st.session.code) + " · " + esc(st.session.name) + " · Série " + club.division + "</div></div>" +
+        '<div class="tb-club">' + crest(club, 40) +
+          '<div class="club-info"><div class="club-name">' + esc(club.name) + '</div>' +
+          '<div class="club-sub">' + clubSub + "</div></div>" +
+        "</div>" +
         '<div class="spacer"></div>' +
-        '<div class="stat"><div class="label">Caixa</div><div class="value' + (club.money < 0 ? " money-neg" : "") + '">' + money(club.money) + "</div></div>" +
-        '<div class="stat"><div class="label">Temporada</div><div class="value">' + st.shared.seasonYear + " · Sem " + st.shared.week + "</div></div>" +
-        '<div class="stat"><div class="label">Próximo</div><div class="value" style="max-width:220px;overflow:hidden;text-overflow:ellipsis">' + esc(st.shared.slot.label) + "</div></div>" +
-        '<div class="stat"><div class="label">Prontos</div><div class="value">' + readyCount + "/" + onlineCount + "</div></div>" +
+        '<div class="tb-stats">' +
+          '<div class="stat"><div class="label">Caixa</div><div class="value' + (club.money < 0 ? " money-neg" : "") + '">' + money(club.money) + "</div></div>" +
+          '<div class="stat"><div class="label">Temporada</div><div class="value">' + esc(U.formatSeasonLabel(st.shared.seasonYear, st.shared.week)) + "</div></div>" +
+          '<div class="stat tb-next"><div class="label">Próximo jogo</div><div class="value">' + esc(st.shared.slot.label) + "</div></div>" +
+          '<div class="stat"><div class="label">Prontos</div><div class="value">' + readyCount + "/" + onlineCount + "</div></div>" +
+        "</div>" +
         soundHtml() +
         '<button class="btn ' + (meP && meP.ready ? "" : "primary") + ' btn-advance" id="btn-ready">' + (meP && meP.ready ? "✔ Aguardando…" : "Pronto ▶") + "</button>" +
       "</div>" +
       '<div class="main">' +
         '<nav class="sidebar">' +
-          TABS.map(([id, label]) => '<button class="nav-item' + (st.tab === id ? " active" : "") + '" data-tab="' + id + '"><span class="txt">' + label + "</span></button>").join("") +
+          TAB_GROUPS.map(g => '<div class="nav-group">' + esc(g[0]) + "</div>" +
+            g[1].map(t => '<button class="nav-item' + (st.tab === t[0] ? " active" : "") + '" data-tab="' + t[0] + '"><span class="txt">' + t[1] + "</span></button>").join("")
+          ).join("") +
         "</nav>" +
         '<div class="content" id="content"></div>' +
       "</div>";
@@ -488,13 +497,14 @@
       drawClubView(el);
     } else if (st.tab === "cup") {
       drawCup(el);
+    } else if (st.tab === "ranking") {
+      drawRanking(el);
     } else if (st.tab === "transfers") {
       drawTransfers(el, club);
     } else if (st.tab === "finances") {
       drawFinances(el, club);
     } else if (st.tab === "news") {
-      el.innerHTML = "<h2>Notícias</h2>" +
-        ((st.personal.news || []).map(n => '<div class="news-item ' + esc(n.type) + '"><div class="nmeta">Temporada ' + n.season + " · Semana " + n.week + '</div><div class="ntitle">' + esc(n.title) + '</div><div class="muted">' + esc(n.text) + "</div></div>").join("") || "<p class='muted'>Sem notícias.</p>");
+      drawNews(el);
     } else if (st.tab === "chat") {
       el.innerHTML = "<h2>Chat da sala</h2>" +
         '<div class="card mb0"><div id="chat-log" style="height:320px;overflow-y:auto;font-size:.9rem;margin-bottom:10px">' + chatHtml() + "</div>" +
@@ -792,23 +802,80 @@
 
   function drawCup(el) {
     const cup = st.shared.cup;
-    function tieRow(t) {
+    const myId = myClub().id;
+    function teamLine(club, goals, win) {
+      return '<div class="tie-team' + (win ? " tw" : "") + '">' + crest(club, 16) +
+        '<span class="tt-name">' + esc(club.shortName || club.name) + "</span>" +
+        '<span class="tt-score">' + (goals != null ? goals : "") + "</span></div>";
+    }
+    function tieCard(t) {
       const h = clubById(t.home), a = clubById(t.away);
       if (!h || !a) return "";
-      const score = t.winner != null ? "<b>" + t.gh + " x " + t.ga + "</b>" + (t.penalties ? " <span class='muted'>(pên.)</span>" : "") : "x";
-      return '<tr><td><span class="club-cell">' + crest(h, 18) + esc(h.shortName) + "</span></td><td style='text-align:center'>" + score + '</td><td><span class="club-cell">' + crest(a, 18) + esc(a.shortName) + "</span></td></tr>";
+      const played = t.winner != null;
+      const pen = played && t.penalties ? '<div class="tie-pen">pênaltis' + (t.shootout ? " " + t.shootout.scoreH + "-" + t.shootout.scoreA : "") + "</div>" : "";
+      const mine = t.home === myId || t.away === myId;
+      return '<div class="tie-card' + (mine ? " tie-mine" : "") + '">' +
+        teamLine(h, played ? t.gh : null, played && t.winner === t.home) +
+        teamLine(a, played ? t.ga : null, played && t.winner === t.away) + pen + "</div>";
     }
-    let html = "<h2>" + esc(st.shared.cupName) + "</h2>";
+    const cols = cup.history.map(hh => ({ phase: hh.phase, ties: hh.results }));
+    if (!cup.championId && cup.ties.length) cols.push({ phase: cup.history.length + 1, name: cup.phaseName, ties: cup.ties, current: true });
+    cols.sort((a, b) => a.phase - b.phase);
+    let bracket = cols.map(col =>
+      '<div class="bracket-col"><div class="bracket-phase">' + esc(col.name || C.CUP_PHASES[col.phase] || ("Fase " + col.phase)) + (col.current ? ' <span class="live-dot">●</span>' : "") + "</div>" +
+      col.ties.map(tieCard).join("") + "</div>").join("");
     if (cup.championId) {
       const champ = clubById(cup.championId);
-      html += '<div class="card"><p style="font-size:1.1rem">🏆 Campeão: <b>' + esc(champ ? champ.name : "?") + "</b></p></div>";
-    } else if (cup.ties.length) {
-      html += '<div class="card"><h3 style="margin-top:0">' + esc(cup.phaseName) + '</h3><table class="data"><tbody>' + cup.ties.map(tieRow).join("") + "</tbody></table></div>";
+      bracket += '<div class="bracket-col"><div class="bracket-phase">Campeão</div><div class="champ-card">🏆<div>' + crest(champ, 30) + "<b>" + esc(champ ? champ.name : "?") + "</b></div></div></div>";
     }
-    for (let i = cup.history.length - 1; i >= 0; i--) {
-      html += '<div class="card"><h3 style="margin-top:0">Fase ' + cup.history[i].phase + '</h3><table class="data"><tbody>' + cup.history[i].results.map(tieRow).join("") + "</tbody></table></div>";
+    el.innerHTML = "<h2>" + esc(st.shared.cupName) + "</h2>" +
+      (bracket ? '<div class="card scroll-x"><div class="bracket">' + bracket + "</div></div>" : '<div class="card"><p class="muted">O mata-mata ainda não começou.</p></div>');
+  }
+
+  // ---------- §34 notícias como inbox ----------
+  var NEWS_ICONS = { title: "🏆", transfer: "💱", finance: "💰", match: "⚽", board: "🏛️", warning: "⚠️", info: "📰" };
+  var NEWS_FILTERS = [["all", "Tudo"], ["title", "Títulos"], ["transfer", "Transferências"], ["finance", "Finanças"], ["match", "Jogos"]];
+  function drawNews(el) {
+    const news = (st.personal.news || []);
+    const f = st._newsFilter || "all";
+    const shown = f === "all" ? news : news.filter(n => n.type === f);
+    el.innerHTML = "<h2>Notícias</h2>" +
+      '<div class="card news-filters">' + NEWS_FILTERS.map(x => '<button class="chip' + (f === x[0] ? " active" : "") + '" data-nf="' + x[0] + '">' + esc(x[1]) + "</button>").join("") + "</div>" +
+      (shown.length ? '<div class="inbox">' + shown.map(n =>
+        '<div class="inbox-item ' + esc(n.type) + '"><div class="ib-icon">' + (NEWS_ICONS[n.type] || "📰") + "</div>" +
+          '<div class="ib-body"><div class="ib-top"><span class="ib-title">' + esc(n.title) + '</span>' +
+          '<span class="ib-date muted">' + esc(U.formatDateLabel(n.season, n.week)) + "</span></div>" +
+          '<div class="muted ib-text">' + esc(n.text) + "</div></div></div>").join("") + "</div>"
+        : '<p class="muted">Nenhuma notícia' + (f !== "all" ? " nesta categoria" : "") + ".</p>");
+    el.querySelectorAll("[data-nf]").forEach(b => b.addEventListener("click", () => { st._newsFilter = b.dataset.nf; drawNews(el); }));
+  }
+
+  // ---------- §16/§25 ranking de técnicos ----------
+  function aiCoachName(club) {
+    const rng = U.createRng(U.hashString(club.id + "|coachname"));
+    return window.TF.names.randomName(club.nation || club.countryId, rng);
+  }
+  function drawRanking(el) {
+    const cid = st.shared.countryId;
+    const myId = myClub().id;
+    const leagueNameA = st.shared.leagueNames.A, leagueNameB = st.shared.leagueNames.B, cupName = st.shared.cupName;
+    const ids = Object.keys(st.shared.clubs).filter(id => st.shared.clubs[id].countryId === cid);
+    const humansByClub = {}; for (const h of (st.shared.humans || [])) humansByClub[h.clubId] = h.name;
+    function prestige(c) {
+      let p = Math.max(0, c.rating - 50);
+      for (const t of (c.titles || [])) p += t.name === leagueNameA ? 25 : t.name === cupName ? 18 : t.name === leagueNameB ? 8 : 12;
+      return Math.round(p);
     }
-    el.innerHTML = html;
+    const rows = ids.map(id => {
+      const c = st.shared.clubs[id];
+      const human = humansByClub[id];
+      return { c, isMe: id === myId, isHuman: !!human, name: human || aiCoachName(c), titles: (c.titles || []).length, points: prestige(c) };
+    }).sort((a, b) => b.points - a.points || b.titles - a.titles);
+    el.innerHTML = "<h2>Ranking de técnicos</h2>" +
+      '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>#</th><th>Técnico</th><th>Clube</th><th class="num">Títulos</th><th class="num">Prestígio</th></tr></thead><tbody>' +
+      rows.map((r, i) => '<tr class="' + (r.isMe ? "me" : "") + '"><td>' + (i + 1) + "º</td><td><b>" + esc(r.name) + "</b>" + (r.isHuman && !r.isMe ? ' <span class="chip" style="padding:1px 6px;font-size:.66rem">humano</span>' : "") + "</td>" +
+        '<td><span class="club-cell">' + crest(r.c, 18) + esc(r.c.shortName || r.c.name) + "</span></td><td class='num'>" + r.titles + '</td><td class="num"><b>' + r.points + "</b></td></tr>").join("") +
+      "</tbody></table></div>";
   }
 
   // ---------- finanças e estádio ----------
