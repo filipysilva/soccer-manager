@@ -424,6 +424,15 @@ tr.sug-row td:first-child { box-shadow: inset 3px 0 0 var(--green); }
   .nav-item span.txt { display: none; }
   .lineup-wrap { grid-template-columns: 1fr; }
   .grid2 { grid-template-columns: 1fr; }
+  .topbar .tb-next { display: none; }
+  .tb-stats { gap: 14px; }
+}
+@media (max-width: 640px) {
+  .topbar { gap: 8px; padding: 8px 10px; flex-wrap: nowrap; }
+  .tb-stats { display: none; } /* stats ficam no Dashboard; barra fica só clube + Avançar */
+  .btn-advance { padding: 9px 14px; font-size: .92rem; }
+  .content { padding: 14px 12px; }
+  .icon-btn { padding: 6px 8px; }
 }
 
 /* ---------- Visão geral (Dashboard) ---------- */
