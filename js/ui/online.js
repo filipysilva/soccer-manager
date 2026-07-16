@@ -418,9 +418,9 @@
   // ---------- tela principal da sala ----------
   // §22 menu agrupado
   const TAB_GROUPS = [
-    ["Rodada", [["rodada", "▶ Rodada"]]],
+    ["Rodada", [["rodada", "▶ Rodada"], ["dashboard", "🏠 Visão geral"]]],
     ["Meu time", [["squad", "👥 Elenco"], ["lineup", "📋 Escalação"]]],
-    ["Competição", [["table", "🏆 Tabela"], ["cup", "🏅 Copa"], ["ranking", "🎖️ Ranking"], ["clubs", "🏟️ Clubes"]]],
+    ["Competição", [["table", "🏆 Tabela"], ["cup", "🏅 Copa"], ["ranking", "🎖️ Ranking"], ["calendar", "📅 Calendário"], ["clubs", "🏟️ Clubes"]]],
     ["Gestão", [["transfers", "💱 Transferências"], ["finances", "💰 Finanças"]]],
     ["Sala", [["news", "📰 Notícias"], ["chat", "💬 Chat"]]]
   ];
@@ -495,6 +495,10 @@
       drawClubs(el);
     } else if (st.tab === "clubView") {
       drawClubView(el);
+    } else if (st.tab === "dashboard") {
+      drawDashboard(el);
+    } else if (st.tab === "calendar") {
+      drawCalendar(el);
     } else if (st.tab === "cup") {
       drawCup(el);
     } else if (st.tab === "ranking") {
@@ -876,6 +880,75 @@
       rows.map((r, i) => '<tr class="' + (r.isMe ? "me" : "") + '"><td>' + (i + 1) + "º</td><td><b>" + esc(r.name) + "</b>" + (r.isHuman && !r.isMe ? ' <span class="chip" style="padding:1px 6px;font-size:.66rem">humano</span>' : "") + "</td>" +
         '<td><span class="club-cell">' + crest(r.c, 18) + esc(r.c.shortName || r.c.name) + "</span></td><td class='num'>" + r.titles + '</td><td class="num"><b>' + r.points + "</b></td></tr>").join("") +
       "</tbody></table></div>";
+  }
+
+  // ---------- §24 visão geral (dashboard) ----------
+  function drawDashboard(el) {
+    const club = myClub();
+    const upcoming = st.personal.upcoming || [];
+    const next = upcoming[0];
+    const table = C.sortTable(st.shared.tables[club.division] || []);
+    const myPos = table.findIndex(r => r.clubId === club.id) + 1;
+    const myRow = table[myPos - 1] || { pts: 0, v: 0, e: 0, d: 0 };
+    let hero = '<div class="dash-hero card"><div class="muted">Sem jogos futuros nesta temporada.</div></div>';
+    if (next) {
+      const h = next.home ? clubById(next.home) : null, a = next.away ? clubById(next.away) : null;
+      hero = '<div class="dash-hero card"><div class="dh-comp">' + esc(next.comp) + '<span class="muted"> · ' + esc(next.sub || "") + "</span></div>" +
+        (h && a ? '<div class="dh-teams"><div class="dh-team">' + crest(h, 46) + "<span>" + esc(h.shortName || h.name) + '</span></div><div class="dh-vs">' + (next.isHome ? "casa" : "fora") + '</div><div class="dh-team">' + crest(a, 46) + "<span>" + esc(a.shortName || a.name) + "</span></div></div>"
+          : '<div class="muted" style="padding:12px 0">Aguardando sorteio / classificação.</div>') + "</div>";
+    }
+    const nextList = upcoming.slice(1, 10).map(u => {
+      const opp = u.home ? clubById(u.isHome ? u.away : u.home) : null;
+      return '<tr><td class="muted" style="font-size:.76rem">' + esc(u.comp) + "<div>" + esc(u.sub || "") + "</div></td>" +
+        (opp ? '<td><span class="club-cell">' + crest(opp, 18) + esc(opp.shortName || opp.name) + "</span></td><td class='muted' style='text-align:right'>" + (u.isHome ? "casa" : "fora") + "</td>" : '<td colspan="2" class="muted">a definir</td>') + "</tr>";
+    }).join("");
+    const news = (st.personal.news || []).slice(0, 5).map(n => '<div class="dash-news ' + esc(n.type) + '"><div class="dn-title">' + esc(n.title) + '</div><div class="muted">' + esc(n.text) + "</div></div>").join("") || '<div class="muted">Sem notícias.</div>';
+    el.innerHTML = "<h2>Visão geral</h2>" +
+      '<div class="dash-grid"><div class="dash-col">' + hero +
+        '<div class="card"><h3 style="margin-top:0">Próximos jogos</h3><table class="data"><tbody>' + (nextList || '<tr><td class="muted">Nada agendado.</td></tr>') + "</tbody></table></div>" +
+      '</div><div class="dash-col">' +
+        '<div class="card dash-quick"><h3 style="margin-top:0">Sua situação</h3><div class="dq-grid">' +
+          '<div class="dq"><div class="dq-v">' + (myPos || "-") + 'º</div><div class="dq-l">na tabela</div></div>' +
+          '<div class="dq"><div class="dq-v">' + myRow.pts + '</div><div class="dq-l">pontos</div></div>' +
+          '<div class="dq"><div class="dq-v">' + myRow.v + "/" + myRow.e + "/" + myRow.d + '</div><div class="dq-l">V/E/D</div></div>' +
+          '<div class="dq"><div class="dq-v ' + (club.money < 0 ? "money-neg" : "") + '">' + money(club.money) + '</div><div class="dq-l">caixa</div></div>' +
+          '<div class="dq"><div class="dq-v">' + Math.round(club.moralTorcida) + '%</div><div class="dq-l">torcida</div></div>' +
+        "</div></div>" +
+        '<div class="card"><h3 style="margin-top:0">Notícias recentes</h3>' + news + "</div>" +
+      "</div></div>";
+  }
+
+  // ---------- §26 calendário anual ----------
+  function drawCalendar(el) {
+    const club = myClub();
+    const log = st.personal.matchLog || [];
+    const upcoming = st.personal.upcoming || [];
+    function resultBadge(m) {
+      const isHome = m.home === club.id;
+      const gf = isHome ? m.gh : m.ga, ga = isHome ? m.ga : m.gh;
+      let r = gf > ga ? "V" : gf < ga ? "D" : "E";
+      if (m.kind === "cup" && gf === ga && m.winner) r = m.winner === club.id ? "V" : "D";
+      return '<span class="res-badge res-' + r + '">' + r + "</span>";
+    }
+    function fixtureRow(comp, sub, homeId, awayId, scoreHtml, badge) {
+      const h = homeId ? clubById(homeId) : null, a = awayId ? clubById(awayId) : null;
+      const compCell = '<td class="muted cal-comp">' + esc(comp) + "<div>" + esc(sub || "") + "</div></td>";
+      if (!h || !a) return "<tr>" + compCell + '<td colspan="4" class="muted">a definir</td></tr>';
+      const mineH = homeId === club.id, mineA = awayId === club.id;
+      return "<tr>" + compCell +
+        '<td class="cal-h' + (mineH ? " me-cell" : "") + '"><span class="club-cell" style="justify-content:flex-end">' + esc(h.shortName || h.name) + crest(h, 18) + "</span></td>" +
+        '<td class="cal-score">' + scoreHtml + "</td>" +
+        '<td class="cal-a' + (mineA ? " me-cell" : "") + '"><span class="club-cell">' + crest(a, 18) + esc(a.shortName || a.name) + "</span></td>" +
+        "<td>" + (badge || "") + "</td></tr>";
+    }
+    const playedRows = log.map(m => {
+      const pen = m.shootout ? ' <span class="muted" style="font-size:.72rem">(' + m.shootout.scoreH + "-" + m.shootout.scoreA + " pên)</span>" : "";
+      return fixtureRow(m.comp, m.kind === "cup" ? m.round : "Rodada " + m.round, m.home, m.away, "<b>" + m.gh + " x " + m.ga + "</b>" + pen, resultBadge(m));
+    }).join("");
+    const upcomingRows = upcoming.map(u => fixtureRow(u.comp, u.sub, u.home, u.away, '<span class="muted">x</span>', "")).join("");
+    el.innerHTML = "<h2>Calendário</h2>" +
+      '<div class="card scroll-x"><h3 style="margin-top:0">Resultados</h3>' + (playedRows ? '<table class="data cal-table"><tbody>' + playedRows + "</tbody></table>" : '<p class="muted">Nenhum jogo disputado ainda nesta temporada.</p>') + "</div>" +
+      '<div class="card scroll-x"><h3 style="margin-top:0">Próximos jogos</h3>' + (upcomingRows ? '<table class="data cal-table"><tbody>' + upcomingRows + "</tbody></table>" : '<p class="muted">Sem jogos futuros nesta temporada.</p>') + "</div>";
   }
 
   // ---------- finanças e estádio ----------

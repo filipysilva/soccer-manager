@@ -42,7 +42,8 @@
         id: playerId, name, clubId,
         tactics: window.TF.tactics.defaultTactics(window.TF.tactics.bestFormation(club)),
         squad: null, training: "auto", setPieces: null,
-        news: [], offers: [], humanOffers: [] // humanOffers: propostas de outros técnicos pelos meus jogadores
+        news: [], offers: [], humanOffers: [], // humanOffers: propostas de outros técnicos pelos meus jogadores
+        matchLog: [] // §26 histórico dos jogos deste técnico na temporada
       };
       rg.humans[playerId] = h;
       autoLineupFor(h);
@@ -219,6 +220,10 @@
               const res = resolveFixture(h, a, provided);
               C().applyResult(league.table, h, a, res.gh, res.ga);
               if (cid === countryId) results.push({ competition: div === "A" ? "Série A" : "Série B", home: h, away: a, gh: res.gh, ga: res.ga });
+              const hh = humanByClub(h), ha = humanByClub(a); // §26 registra o jogo de cada técnico
+              const entry = { kind: "league", comp: league.name, round: slot.round + 1, home: h, away: a, gh: res.gh, ga: res.ga };
+              if (hh) hh.matchLog.push(entry);
+              if (ha) ha.matchLog.push({ ...entry });
             }
             league.currentRound = slot.round + 1;
           }
@@ -244,6 +249,12 @@
             cup.results.push({ ...tie });
             cup.winners.push(winner);
             if (cid === countryId) results.push({ competition: "Copa", home: tie.home, away: tie.away, gh: res.gh, ga: res.ga, winner, shootout: tie.shootout || null });
+            { // §26 registra o confronto de copa de cada técnico (phaseName ainda é a fase atual)
+              const hh = humanByClub(tie.home), ha = humanByClub(tie.away);
+              const entry = { kind: "cup", comp: world.countries[cid].cupName, round: cup.phaseName, home: tie.home, away: tie.away, gh: res.gh, ga: res.ga, winner, shootout: tie.shootout || null };
+              if (hh) hh.matchLog.push(entry);
+              if (ha) ha.matchLog.push({ ...entry });
+            }
             // avisa o técnico humano quando a vaga saiu nos pênaltis
             if (tie.penalties) {
               for (const clubId of [tie.home, tie.away]) {
@@ -574,6 +585,7 @@
       world.season++;
       rg.season = C().buildSeasonCalendar(world, U().RNG.next.bind(U().RNG));
       for (const h of Object.values(rg.humans)) {
+        h.matchLog = []; // §26 zera o histórico da temporada anterior
         autoLineupFor(h);
         addNews(h, "Nova temporada: " + world.season, "Patrocínio creditado. Boa sorte!", "board");
       }
@@ -643,6 +655,32 @@
       };
     }
 
+    // §24/§26 próximos jogos do técnico a partir do calendário da temporada
+    function upcomingForHuman(h, limit) {
+      const club = world.clubs[h.clubId];
+      const league = rg.season.leagues[countryId][club.division];
+      const out = [];
+      for (let i = rg.season.slotIndex; i < rg.season.slots.length && out.length < limit; i++) {
+        const slot = rg.season.slots[i];
+        if (slot.type === "league") {
+          const round = league.rounds[slot.round];
+          if (!round) continue;
+          const f = round.find(pair => pair[0] === club.id || pair[1] === club.id);
+          if (f) out.push({ comp: league.name, sub: "Rodada " + (slot.round + 1), home: f[0], away: f[1], isHome: f[0] === club.id });
+        } else if (slot.type === "cup") {
+          const cup = rg.season.cups[countryId];
+          const cupName = world.countries[countryId].cupName;
+          if (cup.phase === slot.phase && !cup.championId) {
+            const t = cup.ties.find(t => t.home === club.id || t.away === club.id);
+            if (t) out.push({ comp: cupName, sub: cup.phaseName, home: t.home, away: t.away, isHome: t.home === club.id });
+          } else if (!cup.championId && slot.phase >= cup.phase) {
+            out.push({ comp: cupName, sub: C().CUP_PHASES[slot.phase] || "", home: null, away: null });
+          }
+        }
+      }
+      return out;
+    }
+
     function personal(playerId) {
       const h = rg.humans[playerId];
       if (!h) return null;
@@ -650,6 +688,7 @@
         clubId: h.clubId, tactics: h.tactics, squad: h.squad, training: h.training,
         setPieces: h.setPieces, news: h.news, offers: h.offers, humanOffers: h.humanOffers,
         sentBids: h.sentBids || [],
+        matchLog: h.matchLog || [], upcoming: upcomingForHuman(h, 30),
         money: clubOf(h).money
       };
     }
@@ -666,6 +705,7 @@
       rg.season = data.season;
       rg.week = data.week;
       rg.humans = data.humans;
+      for (const h of Object.values(rg.humans)) if (!h.matchLog) h.matchLog = []; // §26 saves antigos
       rg.lastResults = data.lastResults || null;
       rg.pendingSlot = null;
     }
