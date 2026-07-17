@@ -431,6 +431,10 @@
       const buyer = clubOf(h);
       if (buyer.money < value) return { ok: false, reason: "Caixa insuficiente." };
       const ownerHuman = humanByClub(target.clubId);
+      // clubes de IA não vendem craques retidos (paridade com o offline)
+      if (!ownerHuman && !window.TF.transfers.isSellable(target, world.clubs[target.clubId], rg.season.year)) {
+        return { ok: false, reason: (world.clubs[target.clubId].name || "O clube") + " não pretende vender " + target.name + "." };
+      }
       if (ownerHuman && ownerHuman.id !== playerId) {
         // outro técnico decide (a qualquer momento)
         ownerHuman.humanOffers.push({ fromPlayerId: playerId, fromName: h.name, fromClubId: h.clubId, playerId: targetPlayerId, value, wage, years });

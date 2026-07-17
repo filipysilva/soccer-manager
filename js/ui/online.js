@@ -896,20 +896,38 @@
     const leagueNameA = st.shared.leagueNames.A, leagueNameB = st.shared.leagueNames.B, cupName = st.shared.cupName;
     const ids = Object.keys(st.shared.clubs).filter(id => st.shared.clubs[id].countryId === cid);
     const humansByClub = {}; for (const h of (st.shared.humans || [])) humansByClub[h.clubId] = h.name;
+    const trow = {};
+    for (const div of ["A", "B"]) for (const r of (st.shared.tables[div] || [])) trow[r.clubId] = r;
+    function titleCounts(c) {
+      let league = 0, cup = 0, other = 0;
+      for (const t of (c.titles || [])) {
+        if (t.name === leagueNameA || t.name === leagueNameB) league++;
+        else if (t.name === cupName) cup++;
+        else other++;
+      }
+      return { league, cup, other, total: league + cup + other };
+    }
     function prestige(c) {
       let p = Math.max(0, c.rating - 50);
-      for (const t of (c.titles || [])) p += t.name === leagueNameA ? 25 : t.name === cupName ? 18 : t.name === leagueNameB ? 8 : 12;
+      const tc = titleCounts(c);
+      p += tc.league * 25 + tc.cup * 18 + tc.other * 12;
+      const r = trow[c.id]; if (r) p += r.v * 1.5 + r.e * 0.5;
       return Math.round(p);
     }
     const rows = ids.map(id => {
       const c = st.shared.clubs[id];
       const human = humansByClub[id];
-      return { c, isMe: id === myId, isHuman: !!human, name: human || aiCoachName(c), titles: (c.titles || []).length, points: prestige(c) };
-    }).sort((a, b) => b.points - a.points || b.titles - a.titles);
+      const r = trow[id] || { j: 0, v: 0, e: 0, d: 0 };
+      return { c, isMe: id === myId, isHuman: !!human, name: human || aiCoachName(c), t: titleCounts(c), r, points: prestige(c) };
+    }).sort((a, b) => b.t.total - a.t.total || b.points - a.points || b.r.v - a.r.v);
+    const titleCell = t => t.total
+      ? (t.league ? '<span title="Ligas">🏆' + t.league + "</span> " : "") + (t.cup ? '<span title="Copas">🏅' + t.cup + "</span> " : "") + (t.other ? '<span title="Outros">🎖️' + t.other + "</span>" : "")
+      : '<span class="muted">—</span>';
     el.innerHTML = "<h2>Ranking de técnicos</h2>" +
-      '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>#</th><th>Técnico</th><th>Clube</th><th class="num">Títulos</th><th class="num">Prestígio</th></tr></thead><tbody>' +
+      '<p class="muted" style="font-size:.8rem;margin:-6px 0 10px">Vitórias/empates/derrotas da temporada · troféus na carreira</p>' +
+      '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>#</th><th>Técnico</th><th>Clube</th><th class="num">J</th><th class="num">V</th><th class="num">E</th><th class="num">D</th><th>Troféus</th><th class="num">Prestígio</th></tr></thead><tbody>' +
       rows.map((r, i) => '<tr class="' + (r.isMe ? "me" : "") + '"><td>' + (i + 1) + "º</td><td><b>" + esc(r.name) + "</b>" + (r.isHuman && !r.isMe ? ' <span class="chip" style="padding:1px 6px;font-size:.66rem">humano</span>' : "") + "</td>" +
-        '<td><span class="club-cell">' + crest(r.c, 18) + esc(r.c.shortName || r.c.name) + "</span></td><td class='num'>" + r.titles + '</td><td class="num"><b>' + r.points + "</b></td></tr>").join("") +
+        '<td><span class="club-cell">' + crest(r.c, 18) + esc(r.c.shortName || r.c.name) + '</span></td><td class="num">' + r.r.j + '</td><td class="num">' + r.r.v + '</td><td class="num">' + r.r.e + '</td><td class="num">' + r.r.d + "</td><td style='white-space:nowrap'>" + titleCell(r.t) + '</td><td class="num"><b>' + r.points + "</b></td></tr>").join("") +
       "</tbody></table></div>";
   }
 
@@ -1055,7 +1073,7 @@
         "<td>" + (p.traits || []).map(t => '<span class="trait">' + esc(t) + "</span>").join("") + "</td>" +
         "<td class='num'>" + (p.contractYears > 0 ? p.contractYears + " ano(s)" : "livre") + "</td>" +
         "<td class='num'>" + (p.contractYears > 0 ? money(T.askingPrice(p, club)) : "—") + "</td>" +
-        (!mine ? '<td><button class="btn small" data-offer="' + p.id + '">Proposta</button></td>' : "") + "</tr>").join("") +
+        (!mine ? (humanNameByClub(club.id) || T.isSellable(p, club, st.shared.seasonYear) ? '<td><button class="btn small" data-offer="' + p.id + '">Proposta</button></td>' : '<td class="muted" style="font-size:.76rem">Não à venda</td>') : "") + "</tr>").join("") +
       "</tbody></table></div>";
     el.querySelector("#cv-back").addEventListener("click", () => { st.tab = "clubs"; render(); });
     el.querySelectorAll("[data-offer]").forEach(b => b.addEventListener("click", () => offerModal(b.dataset.offer)));
@@ -1088,11 +1106,12 @@
         '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>Pos</th><th>Nome</th><th class="num">Idade</th><th class="num">Força</th><th>Clube</th><th>Técnico</th><th class="num">Pedida</th><th></th></tr></thead><tbody>' +
         all.slice(0, 50).map(({ p, c }) => {
           const hn = humanNameByClub(c.id);
+          const avail = hn || T.isSellable(p, c, st.shared.seasonYear); // clubes de humanos: negociáveis pelo dono
           return "<tr><td>" + pBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b>" + star(p) + "</td><td class='num'>" + p.age + "</td><td class='num'>" + rBadge(p.rating) + "</td>" +
             '<td><span class="club-cell">' + crest(c, 18) + esc(c.shortName) + "</span></td>" +
             "<td>" + (hn ? "<b class='text-green'>" + esc(hn) + "</b>" : "<span class='muted'>IA</span>") + "</td>" +
-            "<td class='num'>" + (p.contractYears > 0 ? money(T.askingPrice(p, c)) : "livre") + "</td>" +
-            '<td><button class="btn small" data-offer="' + p.id + '">Proposta</button></td></tr>';
+            "<td class='num'>" + (!avail ? "—" : p.contractYears > 0 ? money(T.askingPrice(p, c)) : "livre") + "</td>" +
+            (avail ? '<td><button class="btn small" data-offer="' + p.id + '">Proposta</button></td>' : '<td class="muted" style="font-size:.76rem;white-space:nowrap">Não à venda</td>') + "</tr>";
         }).join("") + "</tbody></table></div>";
     } else {
       const sent = st.personal.sentBids || [];
@@ -1144,6 +1163,7 @@
     if (!info) return;
     const { p, c } = info;
     const hn = humanNameByClub(c.id);
+    if (!hn && !T.isSellable(p, c, st.shared.seasonYear)) { toast("O " + esc(c.name) + " não pretende vender " + p.name + "."); return; }
     const price = p.contractYears > 0 ? T.askingPrice(p, c) : 0;
     const wage = T.wageDemand(p, myClub());
     modal(
