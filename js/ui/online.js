@@ -1086,33 +1086,45 @@
     const humanOffers = st.personal.humanOffers || [];
     let inner = "";
     if (tab === "buscar") {
-      const q = st._trQuery || { name: "", pos: "" };
+      const q = st._trQuery || { name: "", pos: "", avail: "all" };
+      const AVAIL = [["all", "Todos disponíveis"], ["sale", "À venda"], ["free", "Livres"], ["expiring", "Último ano"], ["young", "Jovens"]];
       const all = [];
       for (const c of Object.values(st.shared.clubs)) {
         if (c.id === club.id) continue;
+        const hn = humanNameByClub(c.id);
         for (const p of c.players) {
+          if (!hn && !T.isSellable(p, c, st.shared.seasonYear)) continue; // §3.2 IA: só negociáveis; humanos: pelo dono
+          if (hn && !(p.forSale || p.contractYears <= 0)) continue;       // clube humano só lista o que o dono liberou
           if (q.name && !p.name.toLowerCase().includes(q.name.toLowerCase())) continue;
           if (q.pos && p.pos !== q.pos) continue;
-          all.push({ p, c });
+          if (q.avail === "sale" && !(p.forSale || p.contractYears <= 0)) continue;
+          if (q.avail === "free" && p.contractYears > 0) continue;
+          if (q.avail === "expiring" && p.contractYears !== 1) continue;
+          if (q.avail === "young" && p.age > 21) continue;
+          all.push({ p, c, hn });
         }
       }
       all.sort((x, y) => y.p.rating - x.p.rating);
+      const list = all.slice(0, 50);
       inner =
         '<div class="card"><div class="row">' +
-          '<input id="tf-name" placeholder="Nome..." value="' + esc(q.name) + '" style="width:160px">' +
+          '<input id="tf-name" placeholder="Nome..." value="' + esc(q.name) + '" style="width:150px">' +
           '<select id="tf-pos"><option value="">Todas posições</option>' + ["GOL", "ZAG", "LD", "LE", "VOL", "MC", "MEI", "PD", "PE", "ATA"].map(p => "<option" + (q.pos === p ? " selected" : "") + ">" + p + "</option>").join("") + "</select>" +
           '<button class="btn small" id="tf-go">Filtrar</button>' +
+        '</div><div class="chip-row" style="margin-top:8px">' +
+          AVAIL.map(x => '<button class="chip' + (q.avail === x[0] ? " active" : "") + '" data-avail="' + x[0] + '">' + esc(x[1]) + "</button>").join("") +
         "</div></div>" +
-        '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>Pos</th><th>Nome</th><th class="num">Idade</th><th class="num">Força</th><th>Clube</th><th>Técnico</th><th class="num">Pedida</th><th></th></tr></thead><tbody>' +
-        all.slice(0, 50).map(({ p, c }) => {
-          const hn = humanNameByClub(c.id);
-          const avail = hn || T.isSellable(p, c, st.shared.seasonYear); // clubes de humanos: negociáveis pelo dono
-          return "<tr><td>" + pBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b>" + star(p) + "</td><td class='num'>" + p.age + "</td><td class='num'>" + rBadge(p.rating) + "</td>" +
+        (list.length ?
+          '<p class="muted" style="font-size:.82rem;margin:2px 2px 8px">' + all.length + " jogador(es) disponível(is)" + (all.length > 50 ? " · mostrando os 50 primeiros" : "") + "</p>" +
+          '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>Pos</th><th>Nome</th><th class="num">Idade</th><th class="num">Força</th><th>Clube</th><th>Técnico</th><th class="num">Pedida</th><th></th></tr></thead><tbody>' +
+          list.map(({ p, c, hn }) =>
+            "<tr><td>" + pBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b>" + star(p) + "</td><td class='num'>" + p.age + "</td><td class='num'>" + rBadge(p.rating) + "</td>" +
             '<td><span class="club-cell">' + crest(c, 18) + esc(c.shortName) + "</span></td>" +
             "<td>" + (hn ? "<b class='text-green'>" + esc(hn) + "</b>" : "<span class='muted'>IA</span>") + "</td>" +
-            "<td class='num'>" + (!avail ? "—" : p.contractYears > 0 ? money(T.askingPrice(p, c)) : "livre") + "</td>" +
-            (avail ? '<td><button class="btn small" data-offer="' + p.id + '">Proposta</button></td>' : '<td class="muted" style="font-size:.76rem;white-space:nowrap">Não à venda</td>') + "</tr>";
-        }).join("") + "</tbody></table></div>";
+            "<td class='num'>" + (p.contractYears > 0 ? money(T.askingPrice(p, c)) : "<span class='money-neg'>livre</span>") + "</td>" +
+            '<td><button class="btn small" data-offer="' + p.id + '">Proposta</button></td></tr>').join("") +
+          "</tbody></table></div>"
+          : '<div class="card empty-state"><div class="es-icon">🔍</div><p class="es-title">Nenhum jogador disponível</p><p class="muted">Ajuste os filtros ou consulte novamente em outro momento da janela.</p></div>');
     } else {
       const sent = st.personal.sentBids || [];
       inner =
@@ -1149,8 +1161,10 @@
       "</div>" + inner;
 
     el.querySelectorAll("[data-t]").forEach(b => b.addEventListener("click", () => { st._trTab = b.dataset.t; drawTab(el); }));
+    const readTQ = () => ({ name: $("#tf-name") ? $("#tf-name").value : "", pos: $("#tf-pos") ? $("#tf-pos").value : "", avail: (st._trQuery && st._trQuery.avail) || "all" });
     const go = $("#tf-go");
-    if (go) go.addEventListener("click", () => { st._trQuery = { name: $("#tf-name").value, pos: $("#tf-pos").value }; drawTab(el); });
+    if (go) go.addEventListener("click", () => { st._trQuery = readTQ(); drawTab(el); });
+    el.querySelectorAll("[data-avail]").forEach(b => b.addEventListener("click", () => { st._trQuery = Object.assign(readTQ(), { avail: b.dataset.avail }); drawTab(el); }));
     el.querySelectorAll("[data-offer]").forEach(b => b.addEventListener("click", () => offerModal(b.dataset.offer)));
     el.querySelectorAll("[data-ha]").forEach(b => b.addEventListener("click", async () => { await api("respondHumanOffer", { index: parseInt(b.dataset.ha, 10), accept: true }); }));
     el.querySelectorAll("[data-hr]").forEach(b => b.addEventListener("click", async () => { await api("respondHumanOffer", { index: parseInt(b.dataset.hr, 10), accept: false }); }));

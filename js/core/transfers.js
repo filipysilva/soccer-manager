@@ -25,16 +25,29 @@
     return v;
   }
 
-  /* O clube pretende vender este jogador? Não faz sentido todos os craques
-     estarem à venda: craques de clubes fortes são retidos; só uma minoria
-     entra na lista de transferências a cada temporada (determinístico). */
+  /* O clube da IA aceita negociar este jogador nesta temporada? (§3.3)
+     Heurística determinística por temporada/save que considera profundidade na
+     posição, nível do jogador vs. clube, idade, fim de contrato, craque e caixa.
+     Craques titulares ficam retidos; reservas, veteranos e excedentes saem mais
+     fácil — sem deixar o mercado vazio nem com todos os melhores à venda.
+     Livres e anunciados pelo dono são sempre negociáveis. */
   function isSellable(player, ownerClub, seasonYear) {
     if (!ownerClub || player.contractYears <= 0) return true; // livre
     if (player.forSale) return true;                          // anunciado pelo dono
-    if (!player.star) return true;                            // não-craques: negociáveis
-    if (ownerClub.rating < 74) return true;                   // craque em clube fraco pode sair
-    const h = window.TF.util.hashString(player.id + "|sell" + (seasonYear || 0));
-    return (h % 100) < 8;                                     // ~8% dos craques de clubes fortes disponíveis/temporada
+    const squad = ownerClub.players || [];
+    const samePos = squad.filter(x => x.pos === player.pos).length;
+    const gap = ownerClub.rating - player.rating; // >0 = abaixo do nível do clube
+    let score = 0;
+    if (gap >= 8) score += 45; else if (gap >= 4) score += 28; else if (gap >= 1) score += 12;
+    if (samePos >= 4) score += 22; else if (samePos >= 3) score += 12;
+    if (player.age >= 33) score += 18;
+    if (player.age <= 19 && gap > 0) score += 10;
+    if (player.contractYears === 1) score += 25;
+    if (player.star) score -= 55;                 // craque: retido
+    if (gap <= -1) score -= 22;                   // acima do nível: titular-chave
+    if (ownerClub.money < 0) score += 20;         // clube endividado negocia mais
+    const h = window.TF.util.hashString(player.id + "|avail" + (seasonYear || 0)) % 100;
+    return score >= h - 5;
   }
 
   /* Salário que o jogador exige para assinar. */

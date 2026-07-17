@@ -797,15 +797,21 @@
 
     let inner = "";
     if (tab === "buscar") {
-      const q = S._trQuery || { name: "", pos: "", country: "", maxAge: "", order: "rating" };
+      const q = S._trQuery || { name: "", pos: "", country: "", maxAge: "", order: "rating", avail: "all" };
+      const AVAIL = [["all", "Todos disponíveis"], ["sale", "À venda"], ["free", "Livres"], ["expiring", "Último ano"], ["young", "Jovens"]];
       const all = [];
       for (const c of Object.values(world.clubs)) {
         if (c.id === club.id) continue;
         for (const p of c.players) {
+          if (!T().isSellable(p, c, st.season.year)) continue; // §3.2 só negociáveis (filtrado no núcleo)
           if (q.name && !p.name.toLowerCase().includes(q.name.toLowerCase())) continue;
           if (q.pos && p.pos !== q.pos) continue;
           if (q.country && c.countryId !== q.country) continue;
           if (q.maxAge && p.age > parseInt(q.maxAge, 10)) continue;
+          if (q.avail === "sale" && !(p.forSale || p.contractYears <= 0)) continue;
+          if (q.avail === "free" && p.contractYears > 0) continue;
+          if (q.avail === "expiring" && p.contractYears !== 1) continue;
+          if (q.avail === "young" && p.age > 21) continue;
           all.push({ p, c });
         }
       }
@@ -813,23 +819,26 @@
       const list = all.slice(0, 60);
       inner =
         '<div class="card"><div class="row">' +
-          '<input id="f-name" placeholder="Nome..." value="' + esc(q.name) + '" style="width:160px">' +
+          '<input id="f-name" placeholder="Nome..." value="' + esc(q.name) + '" style="width:150px">' +
           '<select id="f-pos"><option value="">Todas posições</option>' + window.TF.world.POSITIONS.map(p => '<option' + (q.pos === p ? " selected" : "") + ">" + p + "</option>").join("") + "</select>" +
           '<select id="f-country"><option value="">Todos países</option>' + Object.values(world.countries).map(c => '<option value="' + c.id + '"' + (q.country === c.id ? " selected" : "") + ">" + esc(c.name) + "</option>").join("") + "</select>" +
-          '<input id="f-age" type="number" placeholder="Idade máx" value="' + esc(q.maxAge) + '" style="width:100px">' +
+          '<input id="f-age" type="number" placeholder="Idade máx" value="' + esc(q.maxAge) + '" style="width:96px">' +
           '<select id="f-order"><option value="rating"' + (q.order === "rating" ? " selected" : "") + '>Força</option><option value="value"' + (q.order === "value" ? " selected" : "") + '>Mais baratos</option><option value="age"' + (q.order === "age" ? " selected" : "") + ">Mais jovens</option></select>" +
           '<button class="btn small" id="f-go">Filtrar</button>' +
+        '</div><div class="chip-row" style="margin-top:8px">' +
+          AVAIL.map(x => '<button class="chip' + (q.avail === x[0] ? " active" : "") + '" data-avail="' + x[0] + '">' + esc(x[1]) + "</button>").join("") +
         "</div></div>" +
-        '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>Pos</th><th>Nome</th><th class="num">Idade</th><th class="num">Força</th><th>Características</th><th>Clube</th><th class="num">Valor</th><th></th></tr></thead><tbody>' +
-        list.map(({ p, c }) => {
-          const avail = T().isSellable(p, c, st.season.year);
-          return "<tr><td>" + UI().posBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b>" + star(p) + "</td><td class='num'>" + p.age + "</td><td class='num'>" + UI().ratingBadge(p.rating) + "</td>" +
+        (list.length ?
+          '<p class="muted" style="font-size:.82rem;margin:2px 2px 8px">' + all.length + " jogador(es) disponível(is)" + (all.length > 60 ? " · mostrando os 60 primeiros" : "") + "</p>" +
+          '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>Pos</th><th>Nome</th><th class="num">Idade</th><th class="num">Força</th><th>Características</th><th>Clube</th><th class="num">Pedida</th><th></th></tr></thead><tbody>' +
+          list.map(({ p, c }) =>
+            "<tr><td>" + UI().posBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b>" + star(p) + "</td><td class='num'>" + p.age + "</td><td class='num'>" + UI().ratingBadge(p.rating) + "</td>" +
             "<td>" + p.traits.map(t => '<span class="trait">' + esc(t) + "</span>").join("") + "</td>" +
             '<td><span class="club-cell">' + UI().crestImg(c, 18) + esc(c.shortName) + "</span></td>" +
-            "<td class='num'>" + (avail ? money(T().askingPrice(p, c)) : "—") + "</td>" +
-            (avail ? '<td><button class="btn small" data-offer="' + p.id + '">Proposta</button></td>' : '<td class="muted" style="font-size:.76rem;white-space:nowrap">Não à venda</td>') + "</tr>";
-        }).join("") +
-        "</tbody></table></div>";
+            "<td class='num'>" + (p.contractYears > 0 ? money(T().askingPrice(p, c)) : "<span class='money-neg'>livre</span>") + "</td>" +
+            '<td><button class="btn small" data-offer="' + p.id + '">Proposta</button></td></tr>').join("") +
+          "</tbody></table></div>"
+          : '<div class="card empty-state"><div class="es-icon">🔍</div><p class="es-title">Nenhum jogador disponível</p><p class="muted">Ajuste os filtros ou consulte novamente em outro momento da janela.</p></div>');
     } else if (tab === "recebidas") {
       const bids = st.pendingBids || [];
       inner = '<div class="card">' +
@@ -877,17 +886,17 @@
       "</div>" + inner;
 
     el.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => { S._trTab = b.dataset.tab; S.transfers(el); }));
-    const go = el.querySelector("#f-go");
-    if (go) go.addEventListener("click", () => {
-      S._trQuery = {
-        name: el.querySelector("#f-name").value,
-        pos: el.querySelector("#f-pos").value,
-        country: el.querySelector("#f-country").value,
-        maxAge: el.querySelector("#f-age").value,
-        order: el.querySelector("#f-order").value
-      };
-      S.transfers(el);
+    const readQuery = () => ({
+      name: el.querySelector("#f-name").value,
+      pos: el.querySelector("#f-pos").value,
+      country: el.querySelector("#f-country").value,
+      maxAge: el.querySelector("#f-age").value,
+      order: el.querySelector("#f-order").value,
+      avail: (S._trQuery && S._trQuery.avail) || "all"
     });
+    const go = el.querySelector("#f-go");
+    if (go) go.addEventListener("click", () => { S._trQuery = readQuery(); S.transfers(el); });
+    el.querySelectorAll("[data-avail]").forEach(b => b.addEventListener("click", () => { S._trQuery = Object.assign(readQuery(), { avail: b.dataset.avail }); S.transfers(el); }));
     el.querySelectorAll("[data-offer]").forEach(b => b.addEventListener("click", () => offerModal(b.dataset.offer, el)));
     el.querySelectorAll("[data-acc]").forEach(b => b.addEventListener("click", () => {
       const o = st.aiOffers[parseInt(b.dataset.acc, 10)];

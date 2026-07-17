@@ -366,6 +366,10 @@ tr.sug-row td:first-child { box-shadow: inset 3px 0 0 var(--green); }
 .chip { background: var(--bg3); border: 1px solid var(--border); color: var(--muted); border-radius: 999px; padding: 5px 12px; font-size: .82rem; cursor: pointer; }
 .chip:hover { color: var(--text); }
 .chip.active { background: var(--green); border-color: var(--green); color: #fff; font-weight: 600; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.empty-state { text-align: center; padding: 34px 20px; }
+.empty-state .es-icon { font-size: 2.4rem; opacity: .8; }
+.empty-state .es-title { font-weight: 700; margin: 8px 0 2px; }
 .inbox { display: flex; flex-direction: column; gap: 8px; }
 .inbox-item { display: flex; gap: 12px; background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--border); border-radius: 0 10px 10px 0; padding: 10px 14px; }
 .inbox-item.title { border-left-color: var(--gold); }
