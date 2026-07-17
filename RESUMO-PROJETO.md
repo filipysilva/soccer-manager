@@ -2,7 +2,7 @@
 
 > Documento para dar contexto a outra IA (ex.: ChatGPT) ou a um novo colaborador.
 > Explica de onde partimos, o que o jogo é hoje, como está organizado e o que falta.
-> Última atualização: julho/2026.
+> Última atualização: julho/2026 (após o overhaul de 43 seções / 7 etapas + ajustes de mercado e ranking).
 
 ---
 
@@ -13,144 +13,164 @@
 - **Carreira (offline):** um jogador comanda um clube, joga temporadas, faz transferências, treina, etc. Salva no `localStorage` do navegador.
 - **Online com salas (multiplayer):** um servidor Node hospeda **salas**; amigos entram com um **código de 5 letras**, cada um assume um clube do mesmo país e jogam a mesma temporada, com as rodadas rodando **ao vivo e sincronizadas** para todos.
 
-O jogo está **publicado e jogável** em `https://tecnico26.onrender.com` (offline em `/`, online em `/online.html`), com deploy automático a cada push no GitHub (`filipysilva/soccer-manager`).
+O jogo está **publicado e jogável** em `https://tecnico26.onrender.com` (carreira em `/`, online em `/online.html`), com deploy automático a cada push no GitHub (`filipysilva/soccer-manager`).
 
-**Objetivo do dono do projeto:** recriar “tudo o que o Brasfoot tem”, com visual moderno e forte foco no **modo online com salas**. O dono não é programador; conduz por feedback em português.
+**Objetivo do dono do projeto:** recriar “tudo o que o Brasfoot tem”, com visual moderno e forte foco no **modo online com salas**. O dono (Filipe) não é programador; conduz por feedback em português. **Regra de ouro:** offline e online devem ter as **mesmas funcionalidades**.
 
 ---
 
 ## 2. De onde partimos
 
-Existiam duas pastas no desktop:
+- `Brasfoot22-23/` — instalação original do Brasfoot, usada só como **referência** (o manual em PDF foi extraído para entender as regras).
+- `Tecnico de futebol online/` — tentativa anterior, descartada; dela reaproveitamos **apenas os dados**: base de jogadores 2026 (`world-db-2026.js`, derivada de Transfermarkt + atributos EA SPORTS FC 26), os **200 escudos** e os sons antigos (hoje não usados).
 
-- `Brasfoot22-23/` — instalação original do Brasfoot (usada só como **referência**; o manual em PDF foi extraído para entender as regras: habilidades, características, sistemas de campeonato, ranking de técnicos, finanças, etc.).
-- `Tecnico de futebol online/` — uma tentativa anterior, com código que **não seguia a estrutura do Brasfoot** e não estava boa. Dela **reaproveitamos apenas os dados**: a base de jogadores 2026 (`world-db-2026.js`, derivada de Transfermarkt + atributos EA SPORTS FC 26), os **200 escudos** (`assets/crests`) e os **13 sons** (`assets/sounds`).
-
-**Decisão inicial (confirmada com o dono):** **reconstruir do zero** numa pasta nova (`Tecnico26/`), com arquitetura pensada desde o início para o modelo Brasfoot e para o online; e **fazer o jogo completo primeiro, o online depois** (embora, na prática, o online tenha sido entregue cedo por já haver base sólida).
+**Decisão inicial:** reconstruir do zero em `Tecnico26/`, com arquitetura pensada para o modelo Brasfoot e para o online desde o começo.
 
 ---
 
 ## 3. Estado atual (o que já existe e funciona)
 
 ### Núcleo de jogo (compartilhado offline/online)
-- **Mundo:** 6 países jogáveis (Brasil, Inglaterra, Espanha, Itália, Portugal, Alemanha), cada um com **Série A e Série B**, montados a partir da base real 2026. Clubes sem elenco completo na base recebem jogadores **gerados deterministicamente**.
-- **Jogadores (estilo Brasfoot):** 7 habilidades numéricas (goleiro, velocidade, passe, armação, desarme, finalização, técnica), 2 **características inatas** (ex.: Finalização, Velocidade, Cabeceio, Cruzamento…), **pé preferido** realista (~27% canhotos, ambidestro raríssimo), moral, energia, forma, potencial, contrato, valor de mercado, salário.
-- **Motor de partida** minuto a minuto (setores defesa/meio/ataque + habilidades + características + tática + moral + energia). Construído como **stepper** (`createMatch` avança 1 minuto por vez) justamente para permitir o modo online e a partida ao vivo.
-- **Temporada:** calendário com turno e returno das ligas A/B + copa nacional (mata-mata; 1ª fase empate classifica visitante, depois pênaltis).
-- **Fim de temporada:** Bola de Ouro, artilheiro, **acesso e rebaixamento**, envelhecimento/declínio, aposentadorias com regeneração de jovens da base, patrocínio da nova temporada.
-- **Finanças:** ingressos (público depende de moral da torcida, adversário, preço), patrocínio anual, salários por rodada, **ampliação de estádio**, gramado.
-- **Mercado:** buscar jogadores, comprar (negociação com pedida e salário), vender com **preço definido pelo usuário** (IA sensível a preço), propostas da IA, jogadores livres, renovação, multa por dispensa.
-- **Treino** semanal, evolução por potencial/idade, lesões, cartões, suspensões.
+- **Mundo:** 6 países jogáveis (Brasil, Inglaterra, Espanha, Itália, Portugal, Alemanha), cada um com **Série A e Série B**. Clubes sem elenco completo na base recebem jogadores gerados deterministicamente.
+- **Jogadores (estilo Brasfoot):** 7 habilidades numéricas, características inatas, **pé preferido** realista (~27% canhotos), moral, energia, forma, potencial, contrato, valor de mercado, salário. **Craques (força ≥ 88)** ganham **⭐** e +5% em campo.
+- **Motor de partida** minuto a minuto (setores defesa/meio/ataque + habilidades + características + tática + moral + energia). É um **stepper** (`createMatch` avança 1 minuto por vez) — base do modo ao vivo e do online.
+- **Temporada:** turno e returno das ligas A/B + copa nacional (mata-mata). Fim de temporada com Bola de Ouro, artilheiro, acesso/rebaixamento, envelhecimento, aposentadorias com regeneração de jovens, patrocínio.
+- **Finanças:** ingressos, patrocínio anual, salários por rodada, ampliação de estádio.
+- **Mercado:** buscar/comprar/vender (preço definido pelo usuário, IA sensível a preço), propostas da IA, livres, renovação. **Craques não ficam todos à venda** (ver §3.4).
 
-### Interface (offline)
-- Barra superior (caixa, torcida, temporada, próximo compromisso, tema, som, **Avançar**), menu lateral com telas: Elenco, Escalação, Classificação, Clubes, Copa, Jogos, Transferências, Finanças, Notícias, Técnico, Opções.
-- **Escalação por campo** (arrastar/clicar), com capitão e cobradores (falta, escanteio esq./dir.), energia visível, banco (11+7=18; excedentes “fora da lista” treinam mas não jogam).
-- **Rodada ao vivo:** todos os jogos do campeonato correm ao mesmo tempo; clicar no **seu** jogo abre a **tela de gestão** (pausa o jogo) para trocar posição, substituir, mudar formação/tática, capitão/cobradores; clicar em **outro** jogo só mostra as estatísticas (sem pausar). Pênalti = você escolhe o batedor; lesão = você escolhe o substituto (se houver banco).
-- **Som** sintetizado em tempo real (Web Audio, sem arquivos): torcida de fundo, rugido no gol, apito, vaias, aplausos; eventos menores silenciados por padrão; **controle de volume/mudo**.
-- **Tema claro/escuro** persistente.
+### 3.1. Sistema tático orientado a dados (`js/core/tactics.js`)
+Cada tática vira **“alavancas” numéricas** que o motor lê para produzir efeitos **reais** (posse, setores de ataque, cruzamentos, contra-ataques, desgaste, faltas, vulnerabilidades). **Nenhuma opção é decorativa.** 15 formações. As **8 dimensões** (agrupadas na UI em *Estratégia / Sem a bola / Dinâmica*):
 
-### Modo online (multiplayer com salas)
+- **Foco ofensivo:** Equilibrado, Pelo meio, Pelas laterais, Contra-ataques.
+- **Construção:** Troca de passes, Jogo misto, Ataque rápido, **Bola longa**.
+- **Mentalidade:** muito defensiva → muito ofensiva (a “linha defensiva” é derivada disso).
+- **Pressão:** baixa / média / alta.
+- **Marcação:** **Por zona** (bloco mais sólido) ou **Homem a homem** (mais faltas/cartões, mais desgaste, mais espaço nas costas, mas **sufoca os criadores adversários**).
+- **Ritmo, Laterais, Pontas.**
+
+Foram **removidas** as antigas dimensões Cruzamentos, Largura e Linha defensiva (o tipo de cruzamento agora emerge da força aérea do elenco). A IA usa o mesmo sistema (perfis de técnico + reação a placar/expulsão/cansaço). `normalize()` **migra saves antigos** (esquerda/direita → Pelas laterais; bolas longas → Equilibrado + Bola longa; etc.).
+
+### 3.2. Pênaltis e disputa de pênaltis (com tensão)
+- **Pênalti durante o jogo:** quando há humano envolvido, abre uma **tela dedicada** — o técnico atacante **escolhe o batedor** (jogadores em campo), há **frases de suspense**, botão **Acelerar**, e a revelação mostra **Gol / Defesa / Trave / Pra fora**. **Sem assistência** em gol de pênalti. No online, isso **pausa a rodada inteira** enquanto acontece.
+- **Disputa de pênaltis (§28):** empate em mata-mata é decidido por uma disputa **real, ponderada pela qualidade** dos batedores/goleiros (acabou a moeda). Melhor de 5 + morte súbita. Há **tela interativa lance a lance** (placar, marcadores, veredito), offline e online.
+
+### 3.3. Interface (redesenhada — carreira e online)
+Barra superior limpa (sem quebras, só a competição do usuário), **menu lateral agrupado** (Meu time / Competição / Gestão / Sala), e as telas:
+
+- **Visão geral (Dashboard):** hero do próximo jogo, **próximos 10 jogos**, situação na tabela, finanças rápidas, notícias recentes. É a tela inicial.
+- **Elenco / Escalação por campo** (capitão e cobradores, energia visível, banco 11+7=18, excedentes “fora da lista” treinam).
+- **Classificação** (com zonas), **Clubes** de todos os países.
+- **Copa:** **chaveamento visual** em colunas por fase (clube do usuário destacado, pênaltis, campeão).
+- **Ranking de técnicos:** classifica os técnicos do país por prestígio, mostrando **J/V/E/D da temporada** e **troféus da carreira por tipo** (🏆 ligas · 🏅 copas · 🎖️ outros). Técnicos da IA têm nomes determinísticos; humanos aparecem marcados.
+- **Calendário anual:** **Resultados** (com placar, disputa de pênaltis e badge **V/E/D** pela ótica do usuário) + **Próximos jogos** da temporada inteira.
+- **Transferências / Finanças.**
+- **Notícias como inbox** (ícone por tipo, data, filtros por categoria).
+- **Partida ao vivo com abas:** **Lance a lance / Estatísticas / Escalações**. Estatísticas mostra Posse, Finalizações, No gol, Escanteios, Faltas.
+- **Chat como drawer lateral** (online), com botão flutuante e badge de mensagens não lidas.
+- **Responsividade** (barra compacta no mobile), **tema claro/escuro** persistente, **som sintetizado** (Web Audio; nunca voltar aos `.wav`).
+
+### 3.4. Mercado de transferências realista
+- **Valor de mercado** ancorado no valor real (Transfermarkt) via `computeValue` (nada de bilhões).
+- **`TF.transfers.isSellable(player, club, seasonYear)`:** **não faz sentido todos os craques estarem à venda** — craques (⭐) de clubes fortes (rating ≥ 74) são **retidos**; só ~8% deterministicamente ficam disponíveis por temporada. Jogadores livres e não-craques sempre negociáveis; clubes de humanos são decididos pelo dono. A UI mostra **“Não à venda”** e o servidor/offerModal rejeitam a proposta.
+- **Propostas a clubes da IA são diferidas:** a resposta chega na **virada da rodada** (“gastar um dia de negociação”).
+
+### 3.5. Modo online (multiplayer com salas)
 - Servidor `server.js` **sem dependências externas** (HTTP + Server-Sent Events). Salas com código, até 12 técnicos, chat, reconexão, persistência em disco por sala.
-- **Paridade quase total com o offline**: mesmas telas (Elenco com coluna Pé, Escalação com lista lateral e destaque por posição, Classificação e Clubes de **todos os países**, Copa, **Finanças**, Transferências), som/volume.
-- **Lobby:** dono escolhe país; cada um escolhe clube; botão **Iniciar** só libera quando todos derem **Pronto**.
-- **Rodada:** começa quando **todos clicam em Pronto** e roda ao vivo sincronizada; **gerir o time pausa a rodada de todos** (decisão de projeto); intervalo aguarda os técnicos.
-- **Transferências entre humanos:** proposta por jogador de outro técnico fica pendente para **ele decidir**; proposta a clube da IA é **respondida na próxima rodada** (ver abaixo).
-- **Entrar no meio do jogo:** alguém com o código entra com o jogo em andamento, vê a **tela de escolher um clube livre**, e **enquanto não escolhe, a sala inteira congela**.
-
-### Sistema de estrelas
-- Craques (força ≥ 88) recebem **⭐ ao lado do nome** em todas as listas (offline e online); rendem +5% em campo; ganham/perdem a estrela conforme a força evolui.
+- **Paridade com o offline:** todas as telas acima existem no online (Visão geral, Elenco/Pé, Escalação, Classificação e Clubes de todos os países, Copa/chaveamento, Ranking, Calendário, Transferências, Finanças, Notícias inbox, partida com abas, chat drawer).
+- **Lobby:** dono escolhe país; cada um escolhe clube; **Iniciar** só libera quando todos derem **Pronto**.
+- **Pausa global da rodada (§10):** controlador **`pauseReasons`** (Sets por motivo: gestão / intervalo / pênalti), não um booleano. Gerir o time **pausa a rodada de todos** (vários podem gerir ao mesmo tempo, relógio congelado). **Intervalo** pausa e **espera o “Estou pronto” de todos os humanos, sem timeout**. **Pênalti/disputa** pausam tudo. **Reconexão** reconstrói a rodada em andamento (placares, eventos, minuto, estado de pausa).
+- **Transferências entre humanos:** proposta por jogador de outro técnico fica pendente para **ele decidir**.
+- **Entrar no meio do jogo:** quem entra com o jogo em andamento vê a tela de escolher um clube livre; **enquanto não escolhe, a sala congela**.
 
 ---
 
 ## 4. Arquitetura e organização do código
 
-Tudo é **JavaScript puro no navegador** (sem framework, sem build). O **mesmo motor** (`js/core/`) roda no navegador (carreira) e no Node (servidor online), o que garante regras idênticas.
+Tudo é **JavaScript puro no navegador** (sem framework, sem build). O **mesmo motor** (`js/core/`) roda no navegador (carreira) e no Node (servidor online), garantindo regras idênticas.
 
 ```
 Tecnico26/
 ├── index.html            # entrada do modo carreira (offline)
-├── online.html           # entrada do modo online
+├── online.html           # entrada do modo online (carrega util, names, tactics, match, competitions, finance, transfers, sounds, online)
 ├── server.js             # servidor de salas (HTTP + SSE), reusa js/core no Node
-├── package.json          # start: node server.js
+├── package.json          # start: node server.js  (porta via env PORT, padrão 3026)
 ├── render.yaml           # deploy no Render (Blueprint)
-├── css/style.css         # tema claro/escuro, todos os estilos
+├── css/style.css         # tema claro/escuro + todos os estilos (dashboard, bracket, inbox, abas, chat drawer, pênalti, etc.)
 ├── assets/crests/        # 200 escudos PNG
-├── assets/sounds/        # sons antigos (não usados; som atual é sintetizado)
 ├── js/db/
 │   ├── world-db-2026.js  # base real: clubes + jogadores (Transfermarkt + FC26) — ~3MB
-│   └── world-leagues.js  # configuração das ligas (nomes, clubes A/B por país)
+│   └── world-leagues.js  # configuração das ligas por país
 ├── js/core/              # MOTOR (compartilhado navegador + Node)
-│   ├── util.js           # RNG com semente, formatação, helpers
+│   ├── util.js           # RNG com semente, formatação (formatSeasonLabel/RoundLabel/CompetitionName/MatchSubtitle/DateLabel/joinDot)
 │   ├── names.js          # gerador de nomes por nacionalidade
-│   ├── world.js          # constrói o mundo; valor de mercado (valueFor/computeValue); isStar
+│   ├── world.js          # constrói o mundo; valor de mercado; isStar
 │   ├── competitions.js   # calendário, tabelas, round-robin, copa
-│   ├── match.js          # motor de partida minuto a minuto (createMatch/simulate)
+│   ├── tactics.js        # sistema tático orientado a dados (8 dimensões → alavancas); IA; migração de saves
+│   ├── match.js          # motor minuto a minuto; pênalti com fases; disputa de pênaltis (penaltyShootout); fase "shootout"
 │   ├── finance.js        # ingressos, patrocínio, estádio, salários
-│   ├── transfers.js      # avaliação/efetivação de propostas, valor justo
-│   ├── game.js           # estado da CARREIRA offline (avançar, treino, fim de temporada, save/load)
-│   └── room-game.js      # estado de uma SALA online (vários humanos no mesmo mundo)
-└── js/ui/                # INTERFACE
-    ├── app.js            # shell offline (barra, menu, navegação, tema)
-    ├── screens.js        # telas do modo carreira
-    ├── match-ui.js       # rodada ao vivo + tela de gestão (offline)
+│   ├── transfers.js      # avaliação/efetivação de propostas; askingPrice; isSellable
+│   ├── game.js           # estado da CARREIRA offline (avançar, treino, fim de temporada, save/load, matchLog)
+│   └── room-game.js      # estado de uma SALA online (vários humanos; snapshot/personal; matchLog; upcomingForHuman)
+└── js/ui/
+    ├── app.js            # shell offline (barra, menu agrupado, navegação, tema)
+    ├── screens.js        # telas do modo carreira (dashboard, ranking, chaveamento, calendário, inbox, transferências, etc.)
+    ├── match-ui.js       # rodada ao vivo + gestão + telas de pênalti/disputa (offline); abas da partida
     ├── sounds.js         # som sintetizado (Web Audio)
-    └── online.js         # cliente do modo online (lobby, telas, rodada ao vivo, gestão)
+    └── online.js         # cliente do modo online (lobby, telas, rodada ao vivo, gestão, pênalti/disputa, chat drawer)
 ```
 
 ### Pontos importantes de design
-- **`js/core/match.js` — `createMatch(home, away, opts)`**: cria uma partida controlável (`playMinute()`, `substitute`, `swapPositions`, `reformTeam`, `resolvePenalty`, `resolveInjury`, `result()`, `finishNow()`). `simulate()` é só `createMatch().finishNow()`. `opts.interactiveSide` faz pênaltis/lesões do time humano “pausarem” esperando decisão.
-- **Valor de mercado realista:** o campo `value` da base **É o valor real (Transfermarkt)**. `valueFor(rating, age)` é uma fórmula exponencial calibrada; `computeValue(p)` **escala a partir da âncora real** (`_mv0/_mvR/_mvA`) em vez de recalcular do zero — foi assim que corrigimos valores “na casa dos bilhões”.
-- **Online = servidor autoritativo.** O servidor roda o motor; os clientes recebem **snapshots** via SSE. Elenco completo só do país da sala; dos outros países, versão **leve** (`lightPlayer`) para caber (~2,1MB por snapshot).
-- **Protocolo online:** ações via `POST /api/room/:code/action` (o campo do jogador-alvo numa proposta é **`targetId`**, pois `playerId` é reservado para autenticação); eventos em tempo real via SSE (`snapshot`, `roundStart`, `tick`, `roundPaused/Resumed`, `joinFreeze/joinDone`, etc.).
-- **Propostas a clubes da IA são diferidas:** `submitBid` (offline) / `sentBids` (online) guardam a proposta; a resposta chega no `weeklyTick` (virada da rodada) como notícia — “gastar um dia de negociação”.
+- **`match.js — createMatch(home, away, opts)`**: partida controlável (`playMinute`, `substitute`, `swapPositions`, `reformTeam`, `setPenaltyTaker`/`finishPenalty`, `finishShootout`, `resolveInjury`, `result()`, `finishNow()`). `opts.interactiveSide` (offline) e `opts.humanSides` (online) fazem pênaltis com humano abrir a tela de tensão. `opts.knockout` faz um empate no fim do tempo normal entrar na **fase `shootout`** (disputa de pênaltis apresentada pela UI). `result().shootout` carrega o resultado da disputa. `TF.match.penaltyShootout(homeTeam, awayTeam, rng)` é o resolvedor independente.
+- **Online = servidor autoritativo.** O servidor roda o motor; clientes recebem **snapshots** via SSE. Elenco completo só do país da sala; dos outros, versão leve.
+- **Protocolo online (SSE):** `snapshot`, `roundStart`, `roundSnapshot` (reconexão), `tick` (agora com `stats` por jogo), `pauseState` (unificado: gestão/intervalo/pênalti + lista de quem falta no intervalo), `penalty`/`penaltyEnd`, `shootout`/`shootoutEnd`, `lobby`, `chat`, `joinFreeze/joinDone`. Ações via `POST /api/room/:code/action` (alvo de proposta = **`targetId`**; `penaltyTaker`/`penaltyAccelerate`/`shootoutAccelerate`/`ready2h`/`manageOpen`/`manageClose`).
+- **`personal` do técnico (online):** inclui `upcoming` (próximos jogos), `matchLog` (histórico da temporada) e `news`, para as telas de Visão geral e Calendário. `serializeClub` envia `titles` e `nation` (para o Ranking).
+- **Migração de saves:** offline em `game.js load()` (pé, estrela, `matchLog || []`) e `tactics.normalize()`; online em `room-game.hydrate()` (garante `matchLog`).
 
 ---
 
 ## 5. Como rodar e publicar
 
-- **Carreira:** abrir `index.html` no navegador, ou dois cliques em `INICIAR-JOGO.bat` (precisa de Node) → `http://localhost:3026`.
+- **Carreira:** abrir `index.html`, ou `INICIAR-JOGO.bat` (precisa de Node) → `http://localhost:3026`.
 - **Online local:** `INICIAR-ONLINE.bat` → `http://localhost:3026/online.html`; amigos na mesma rede usam o IP do PC.
-- **Online na internet:** repositório `filipysilva/soccer-manager` no GitHub → Render (Blueprint lê `render.yaml`). Push = deploy automático. Guia completo em `COMO-JOGAR-ONLINE.md`. Limitação do plano grátis: servidor dorme após ~15 min sem uso e salas não sobrevivem a reinícios (bom para uma temporada com amigos, não para persistência longa).
+- **Online na internet:** push no `filipysilva/soccer-manager` → Render (lê `render.yaml`) republica. Guia em `COMO-JOGAR-ONLINE.md`. Plano grátis: o servidor dorme após ~15 min sem uso e salas não sobrevivem a reinícios.
 
-Testes: cada mudança é validada com `node --check`, simulações **headless** do motor (temporadas inteiras via `node -e`) e verificação no navegador; o online é testado subindo o `server.js` numa porta de teste com um script que simula 2 jogadores por SSE.
-
----
-
-## 6. Histórico do que foi feito (em ordem)
-
-1. **Base (commit inicial):** reconstrução do zero — mundo, motor de partida, competições, finanças, mercado, carreira completa, e o **modo online com salas** já funcionando (lobby, rodada sincronizada, transferências entre humanos, chat).
-2. **Partida interativa:** pênalti com escolha de batedor, lesão com substituição na hora, capitão e cobradores, **cansaço por idade**, **pé realista**, próximos compromissos mostrando a competição.
-3. **Fase 1 — Experiência da partida (offline + paridade online):** fim do botão pausar (só pausa ao gerir), energia nas camisas, mudar formação no jogo, destaque por posição, confirmação de troca/substituição, capitão/cobradores ao vivo, **controle de som/volume**, lesão sem banco não trava, **limite de banco**; e a mesma coisa no online (com **pausa global** ao gerir, coluna Pé, aba Clubes com proposta, escalação com lista lateral, **lobby-ready**).
-4. **Rebalanceamento da economia:** valores realistas ancorados no valor real (fim dos bilhões), caixa e patrocínio realistas por porte do clube.
-5. **Paridade online — Finanças + multi-país:** aba Finanças no online; **tabelas e clubes de todos os países** no snapshot.
-6. **Entrar no meio do jogo (online):** join com jogo em andamento, escolha de clube livre, congelamento da sala até escolher.
-7. **Propostas à IA respondidas na próxima rodada** (offline e online).
-8. **Sistema de estrelas:** ⭐ nos craques em todas as telas, +5% de rendimento.
+**Testes:** cada mudança é validada com `node --check`, simulações **headless** do motor (temporadas inteiras) e verificação no **navegador**; o online é testado subindo o `server.js` e dirigindo 1–2 clientes por SSE (ou criando uma sala real no navegador).
 
 ---
 
-## 7. Roadmap — o que falta (plano aprovado, 6 fases)
+## 6. Status do overhaul (43 seções / 7 etapas) — CONCLUÍDO
 
-A Fase 1 está concluída. As demais são o roteiro combinado:
+Todas as 7 etapas do grande pedido foram entregues e estão no ar:
 
-- **Fase 2 — Fluxo da rodada/UX:** ordem das ligas na rodada (a divisão do técnico em velocidade normal, as outras aceleradas), fim da rodada mostrando resultados de todas as divisões com humanos + navegador de resultados de qualquer liga, **tela de Calendário** completa, **chaveamento visual** da copa.
-- **Fase 3 — Pênaltis e emoção:** tela de pênalti travada com **narração de tensão** (3–5 frases) antes da cobrança; **disputa de pênaltis** nos mata-matas (ordem dos batedores + suspense); tirar assistência de gol de pênalti e de falta; gols de falta mais raros/difíceis.
-- **Fase 4 — Progressão e força:** **recalibrar as forças com dados reais da web** (decisão do dono); cansaço/moral influenciando mais o jogo; **curva de idade** completa (evolui até ~30, declina a partir de 32, aposenta 34–42, obrigatório aos 42, volta como jovem); **academia de juniores**; **sistema de estrelas completo** (evoluem mais rápido, produzem mais, valorizam salário/mercado ao longo dos anos — a base visual já existe).
-- **Fase 5 — Rankings e recompensas:** ranking de artilheiros (liga/copa/temporada), assistências, notas; **recompensa em dinheiro** por artilharia/títulos e jogador destaque pedindo aumento; **ranking de técnicos** por títulos/colocações (IA com nomes famosos + humanos).
-- **Fase 6 — Competições:** estaduais, **Libertadores/Champions**, Sul-Americana/Liga Europa, copas de outros países, **Mundial de Clubes**, **Copa do Mundo**; correção do fim de temporada e **2 janelas de transferência** (início e meio; a lógica de janela já existe em `transferWindowInfo`).
+1. **Etapa 1 — Táticas + Marcação:** simplificação das táticas e a nova dimensão **Marcação** (zona/homem) com efeito real; migração de saves.
+2. **Etapa 2 — Pausa global online:** controlador `pauseReasons`; intervalo esperando todos os humanos sem timeout; reconexão.
+3. **Etapa 3 — Pênalti com tensão + disputa:** tela dedicada de pênalti, disputa de pênaltis por qualidade com tela lance a lance; sem assistência em gol de pênalti.
+4. a **7. Etapas 4–7 — Redesign completo da UI:** design system + funções de formatação, barra superior, menu em grupos, **Dashboard**, **Perfil/Sala de troféus**, **Ranking de técnicos**, **Chaveamento**, **Calendário anual**, **Notícias inbox**, **abas na partida**, **chat drawer**, **responsividade** — tudo **nos dois modos** (carreira e online).
 
-**Decisões de projeto já tomadas para as próximas fases:**
-1. Recalibrar forças buscando **dados reais na web** (Fase 4).
-2. No online, **pausar a rodada inteira** quando um técnico gerencia o time ou quando há pênalti.
+**Ajustes pós-feedback:** craques retidos no mercado (`isSellable`) e ranking de técnicos detalhado (J/V/E/D + troféus por tipo).
+
+---
+
+## 7. O que ainda pode evoluir (não bloqueante)
+
+O overhaul está completo; o que resta são melhorias futuras / conteúdo novo:
+
+- **Polimento visual fino** de escalação/tática, transferências (painel lateral), finanças.
+- **Competições continentais e seleções:** estaduais, Libertadores/Champions, Sul-Americana/Liga Europa, Mundial de Clubes, **Copa do Mundo** (ainda não existem — hoje há liga A/B + copa nacional por país).
+- **Progressão de elenco mais rica:** academia de juniores, curva de idade mais detalhada, moral influenciando mais.
+- **Rankings de jogadores** (artilheiros, assistências) e recompensas por artilharia/títulos.
+- **Persistência online robusta** (hoje é em disco por sala; ideal seria banco de dados).
 
 ---
 
 ## 8. Convenções e cuidados (para quem continuar)
 
-- **Não voltar aos sons `.wav`** — o dono não gostou; o som atual é sintetizado em `js/ui/sounds.js`.
-- **Manter offline e online com as mesmas funcionalidades** — é um pedido recorrente do dono. Sempre que mudar o offline (`screens.js`), espelhar no online (`online.js` + `server.js`/`room-game.js`).
+- **Manter offline e online idênticos:** ao mudar o offline (`screens.js`/`match-ui.js`/`app.js`), espelhar no online (`online.js` + `server.js`/`room-game.js`). É pedido recorrente do dono.
+- **Não voltar aos sons `.wav`** — o som atual é sintetizado em `js/ui/sounds.js`.
+- **Nenhuma opção tática pode ser só visual** — tudo deve afetar o motor.
 - **Valores de mercado:** preservar a âncora real (`computeValue`), não recalcular do zero.
 - **Protocolo online:** alvo de proposta = `targetId` (não `playerId`).
-- **Cache do navegador:** ao testar mudanças de JS, forçar **Ctrl+F5** (o navegador cacheia os arquivos).
-- **Saves antigos** (localStorage) migram automaticamente em `game.js load()` (pé, estrela); ao adicionar campos novos, incluir migração ali.
-- **Deploy:** basta `git push` no `filipysilva/soccer-manager` que o Render republica.
+- **Cache do navegador:** ao testar/ver mudanças de JS, forçar **Ctrl+Shift+R** (o navegador cacheia os arquivos — foi o motivo de o dono “não ver” telas já implementadas).
+- **Saves antigos** migram automaticamente; ao adicionar campos, incluir a migração (`game.js load()`, `tactics.normalize()`, `room-game.hydrate()`).
+- **Este RESUMO deve ser atualizado a cada mudança do projeto** (o dono usa para alimentar o ChatGPT).
+- **Deploy:** `git push` no `filipysilva/soccer-manager` → Render republica.
