@@ -1225,26 +1225,41 @@
       const m = live.matches[i];
       const mine = m.humanH === st.session.playerId || m.humanA === st.session.playerId;
       if (mine && !m.fin) { openLiveManage(); return; }
-      live.selected = i;
-      app.querySelectorAll(".match-card").forEach(c => c.classList.toggle("selected", c === card));
-      buildDetail();
+      selectMatch(i);
     }));
     renderRoundControls();
     buildDetail();
     updateRound();
   }
 
+  // §12 seleciona uma partida para ver o detalhe (preserva a aba _rdTab)
+  function selectMatch(i) {
+    if (!st.live) return;
+    st.live.selected = i;
+    document.querySelectorAll(".match-card").forEach((c, idx) => c.classList.toggle("selected", idx === i));
+    buildDetail();
+    renderRoundControls();
+  }
+  function myMatchIndex() {
+    if (!st.live) return -1;
+    return st.live.matches.findIndex(m => m.humanH === st.session.playerId || m.humanA === st.session.playerId);
+  }
+
   function renderRoundControls() {
     const el = $("#controls");
     if (!el || !st.live) return;
     const live = st.live;
-    const myMatch = live.matches.find(m => m.humanH === st.session.playerId || m.humanA === st.session.playerId);
+    const myIdx = myMatchIndex();
+    const myMatch = myIdx >= 0 ? live.matches[myIdx] : null;
     let html = soundHtml();
+    if (myIdx >= 0 && live.selected !== myIdx) html += '<button class="btn primary" id="rc-mygame">👁️ Meu jogo</button>'; // §12.2
     if (live.waitingMe) html += '<button class="btn primary" id="rc-2half">▶ Pronto para o 2º tempo</button>';
     if (myMatch && !myMatch.fin) html += '<button class="btn" id="rc-manage">⚙️ Gerir meu time</button>';
     if (!myMatch) html += '<span class="muted">Acompanhando a rodada…</span>';
     el.innerHTML = html;
     bindSound(el);
+    const bmg = $("#rc-mygame");
+    if (bmg) bmg.addEventListener("click", () => selectMatch(myIdx));
     const b2 = $("#rc-2half");
     if (b2) b2.addEventListener("click", async () => { live.waitingMe = false; renderRoundControls(); await api("ready2h"); });
     const bm = $("#rc-manage");

@@ -80,11 +80,17 @@
       }).join("");
       $grid.querySelectorAll(".match-card").forEach(card => card.addEventListener("click", () => {
         const i = parseInt(card.dataset.i, 10);
-        if (i === userIdx) { openManagement(); return; }
-        selectedIdx = i;
-        $grid.querySelectorAll(".match-card").forEach(c => c.classList.toggle("selected", c === card));
-        buildDetail();
+        if (i === userIdx && !userGame.match.finished) { openManagement(); return; } // seu card ao vivo = gerir
+        selectGame(i);
       }));
+    }
+
+    // §12 seleciona uma partida para VER o detalhe (sem abrir a gestão), preservando a aba
+    function selectGame(i) {
+      selectedIdx = i;
+      $grid.querySelectorAll(".match-card").forEach((c, idx) => c.classList.toggle("selected", idx === i));
+      buildDetail();
+      renderControls();
     }
 
     function updateGrid() {
@@ -363,6 +369,7 @@
       const allDone = games.every(g => g.match.finished);
       const userHalf = userGame.match.phase === "halftime";
       let html = soundHtml();
+      if (selectedIdx !== userIdx) html += '<button class="btn primary" id="c-mygame">👁️ Meu jogo</button>'; // §12.2 voltar ao próprio jogo
       if (allDone) {
         html += '<button class="btn primary" id="c-done">Continuar ▶</button>' +
           '<button class="btn" id="c-report">📊 Resumo tático</button>' +
@@ -382,6 +389,7 @@
       }
       $controls.innerHTML = html;
       bindSound($controls);
+      bind("#c-mygame", () => selectGame(userIdx));
       bind("#c-skip", skipAll);
       bind("#c-manage", openManagement);
       bind("#c-2half", () => { userGame.match.resumeSecondHalf(); S().play("kickoff"); play(); });
