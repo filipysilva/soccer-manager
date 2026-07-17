@@ -24,6 +24,7 @@
     pendingLiveRound: null,
     lastRoundResults: null,
     matchLog: [],         // §26 histórico dos jogos do usuário na temporada
+    rankPrev: {},         // §4.5 posições do ranking de técnicos na rodada anterior (por país)
     started: false
   };
 
@@ -52,6 +53,7 @@
     state.news = [];
     state.aiOffers = [];
     state.matchLog = [];
+    state.rankPrev = {};
     state.week = 1;
     state.started = true;
     addNews("Bem-vindo ao " + userClub().name + "!",
@@ -219,7 +221,33 @@
     processSlot(pending.slot, provided, userPlayed);
   }
 
+  // §4.5 posições do ranking de técnicos por país (para mostrar subiu/caiu)
+  function computeRankPositions(cid) {
+    const world = state.world, country = world.countries[cid];
+    const ctxBase = { leagueNameA: country.leagueNameA, leagueNameB: country.leagueNameB, cupName: country.cupName };
+    const trow = {}, avg = {};
+    for (const div of ["A", "B"]) {
+      for (const r of state.season.leagues[cid][div].table) trow[r.clubId] = r;
+      const dids = div === "A" ? country.clubIdsA : country.clubIdsB;
+      avg[div] = dids.reduce((a, id) => a + world.clubs[id].rating, 0) / (dids.length || 1);
+    }
+    const ids = country.clubIdsA.concat(country.clubIdsB);
+    const arr = ids.map(id => {
+      const c = world.clubs[id];
+      const ctx = Object.assign({ leagueAvgRating: avg[c.division] }, ctxBase);
+      return { id, name: c.name, points: C().coachPrestige(c, trow[id], ctx) };
+    }).sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
+    const pos = {};
+    arr.forEach((r, i) => { pos[r.id] = i + 1; });
+    return pos;
+  }
+  function snapshotRanking() {
+    state.rankPrev = state.rankPrev || {};
+    for (const cid of Object.keys(state.season.leagues)) state.rankPrev[cid] = computeRankPositions(cid);
+  }
+
   function processSlot(slot, provided, userPlayed) {
+    if (slot.type === "league" || slot.type === "cup") snapshotRanking(); // guarda posições ANTES de aplicar a rodada
     const results = [];
     if (slot.type === "league") {
       for (const cid of Object.keys(state.season.leagues)) {
@@ -600,6 +628,7 @@
     world.season++;
     state.season = C().buildSeasonCalendar(world, U.RNG.next.bind(U.RNG));
     state.matchLog = []; // §26 zera o histórico de jogos da temporada anterior
+    state.rankPrev = {};  // §4.5 zera as posições anteriores (tabela reinicia)
     state.coach.history.push({ year: report.year, club: userClub().name });
     addNews("Nova temporada: " + world.season, "Patrocínio creditado. Boa sorte!", "board");
     autoLineup();
@@ -614,7 +643,7 @@
       season: state.season, coach: state.coach, tactics: state.tactics,
       userSquad: state.userSquad, training: state.training, news: state.news,
       aiOffers: state.aiOffers, pendingBids: state.pendingBids, week: state.week, setPieces: state.setPieces,
-      matchLog: state.matchLog
+      matchLog: state.matchLog, rankPrev: state.rankPrev
     };
     try {
       localStorage.setItem(SAVE_KEY + (slot || 1), JSON.stringify(data));
@@ -643,6 +672,7 @@
     state.userSquad = data.userSquad; state.training = data.training; state.news = data.news || [];
     state.aiOffers = data.aiOffers || []; state.week = data.week || 1;
     state.matchLog = data.matchLog || [];
+    state.rankPrev = data.rankPrev || {};
     state.pendingBids = data.pendingBids || [];
     state.setPieces = data.setPieces || null;
     state.pendingLiveRound = null;

@@ -508,53 +508,54 @@
     const rng = U.createRng(U.hashString(club.id + "|coachname"));
     return window.TF.names.randomName(club.nation || club.countryId, rng);
   }
+  // célula de variação de posição no ranking (§4.5)
+  function rankMoveCell(prevPos, pos) {
+    if (!prevPos) return '<span class="muted">novo</span>';
+    const d = prevPos - pos;
+    if (d > 0) return '<span class="rk-up" title="Subiu ' + d + '">▲ ' + d + "</span>";
+    if (d < 0) return '<span class="rk-down" title="Caiu ' + (-d) + '">▼ ' + (-d) + "</span>";
+    return '<span class="muted" title="Manteve">=</span>';
+  }
   S.ranking = function (el) {
     const st = G().state;
     const world = st.world;
     const club = G().userClub();
     const cid = S._rankCountry || club.countryId;
     const country = world.countries[cid];
+    const ctxBase = { leagueNameA: country.leagueNameA, leagueNameB: country.leagueNameB, cupName: country.cupName };
+    const trow = {}, avg = {};
+    for (const div of ["A", "B"]) {
+      const table = st.season.leagues[cid][div].table;
+      for (const r of table) trow[r.clubId] = r;
+      const dids = div === "A" ? country.clubIdsA : country.clubIdsB;
+      avg[div] = dids.reduce((a, id) => a + world.clubs[id].rating, 0) / (dids.length || 1);
+    }
     const ids = (country.clubIdsA || []).concat(country.clubIdsB || []);
-    // linhas da tabela (V/E/D da temporada atual) por clube
-    const trow = {};
-    for (const div of ["A", "B"]) for (const r of st.season.leagues[cid][div].table) trow[r.clubId] = r;
-    function titleCounts(c) {
-      let league = 0, cup = 0, other = 0;
-      for (const t of (c.titles || [])) {
-        if (t.name === country.leagueNameA || t.name === country.leagueNameB) league++;
-        else if (t.name === country.cupName) cup++;
-        else other++;
-      }
-      return { league, cup, other, total: league + cup + other };
-    }
-    function prestige(c) {
-      let p = Math.max(0, c.rating - 50);
-      const tc = titleCounts(c);
-      p += tc.league * 25 + tc.cup * 18 + tc.other * 12;
-      const r = trow[c.id]; if (r) p += r.v * 1.5 + r.e * 0.5; // desempenho na temporada
-      return Math.round(p);
-    }
+    const prev = (st.rankPrev && st.rankPrev[cid]) || {};
     const rows = ids.map(id => {
       const c = world.clubs[id];
       const isUser = id === club.id;
       const r = trow[id] || { j: 0, v: 0, e: 0, d: 0 };
-      return { c, isUser, name: isUser ? st.coach.name : aiCoachName(c), t: titleCounts(c), r, points: prestige(c) };
-    }).sort((a, b) => b.t.total - a.t.total || b.points - a.points || b.r.v - a.r.v);
+      const ctx = Object.assign({ leagueAvgRating: avg[c.division] }, ctxBase);
+      return { c, isUser, name: isUser ? st.coach.name : aiCoachName(c), t: C().titleBreakdown(c, ctxBase), r, points: C().coachPrestige(c, r, ctx) };
+    }).sort((a, b) => b.points - a.points || a.c.name.localeCompare(b.c.name)); // §4.4 empate → alfabético (sem viés de clube)
+    rows.forEach((r, i) => { r.pos = i + 1; });
 
     const titleCell = t => t.total
       ? (t.league ? '<span title="Ligas">🏆' + t.league + "</span> " : "") + (t.cup ? '<span title="Copas">🏅' + t.cup + "</span> " : "") + (t.other ? '<span title="Outros">🎖️' + t.other + "</span>" : "")
-      : '<span class="muted">—</span>';
+      : '<span class="muted">Nenhum título</span>';
 
     el.innerHTML =
       "<h2>Ranking de técnicos</h2>" +
       '<div class="card"><div class="row"><select id="rk-c">' +
         Object.values(world.countries).map(co => '<option value="' + co.id + '"' + (co.id === cid ? " selected" : "") + ">" + esc(co.name) + "</option>").join("") +
-      '</select><span class="muted" style="font-size:.8rem">Vitórias/empates/derrotas da temporada · troféus na carreira</span></div></div>' +
+      '</select><span class="muted" style="font-size:.8rem">Base igual para todos · sobe/desce pelo desempenho vs. expectativa · troféus na carreira</span></div></div>' +
       '<div class="card scroll-x mb0"><table class="data"><thead><tr>' +
-        "<th>#</th><th>Técnico</th><th>Clube</th><th class='num'>J</th><th class='num'>V</th><th class='num'>E</th><th class='num'>D</th><th>Troféus</th><th class='num'>Prestígio</th>" +
+        "<th>#</th><th>Var.</th><th>Técnico</th><th>Clube</th><th class='num'>J</th><th class='num'>V</th><th class='num'>E</th><th class='num'>D</th><th>Troféus</th><th class='num'>Prestígio</th>" +
       "</tr></thead><tbody>" +
-      rows.map((r, i) =>
-        '<tr class="' + (r.isUser ? "me" : "") + '"><td>' + (i + 1) + "º</td>" +
+      rows.map(r =>
+        '<tr class="' + (r.isUser ? "me" : "") + '"><td>' + r.pos + "º</td>" +
+          "<td>" + rankMoveCell(prev[r.c.id], r.pos) + "</td>" +
           "<td><b>" + esc(r.name) + "</b></td>" +
           '<td><span class="club-cell">' + UI().crestImg(r.c, 18) + esc(r.c.shortName || r.c.name) + "</span></td>" +
           '<td class="num">' + r.r.j + '</td><td class="num">' + r.r.v + '</td><td class="num">' + r.r.e + '</td><td class="num">' + r.r.d + "</td>" +

@@ -208,7 +208,29 @@
       return M().simulate(aiTeam(hc), aiTeam(ac), { grass: hc.grass });
     }
 
+    // §4.5 posições do ranking de técnicos (país da sala) para mostrar subiu/caiu
+    function computeRankPositions() {
+      const country = world.countries[countryId];
+      const ctxBase = { leagueNameA: country.leagueNameA, leagueNameB: country.leagueNameB, cupName: country.cupName };
+      const trow = {}, avg = {};
+      for (const div of ["A", "B"]) {
+        for (const r of rg.season.leagues[countryId][div].table) trow[r.clubId] = r;
+        const dids = div === "A" ? country.clubIdsA : country.clubIdsB;
+        avg[div] = dids.reduce((a, id) => a + world.clubs[id].rating, 0) / (dids.length || 1);
+      }
+      const ids = country.clubIdsA.concat(country.clubIdsB);
+      const arr = ids.map(id => {
+        const c = world.clubs[id];
+        const ctx = Object.assign({ leagueAvgRating: avg[c.division] }, ctxBase);
+        return { id, name: c.name, points: C().coachPrestige(c, trow[id], ctx) };
+      }).sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
+      const pos = {};
+      arr.forEach((r, i) => { pos[r.id] = i + 1; });
+      return pos;
+    }
+
     function processSlot(slot, provided) {
+      if (slot.type === "league" || slot.type === "cup") rg.rankPrev = computeRankPositions();
       const results = [];
       if (slot.type === "league") {
         for (const cid of Object.keys(rg.season.leagues)) {
@@ -588,6 +610,7 @@
       }
       world.season++;
       rg.season = C().buildSeasonCalendar(world, U().RNG.next.bind(U().RNG));
+      rg.rankPrev = {}; // §4.5 zera as posições anteriores
       for (const h of Object.values(rg.humans)) {
         h.matchLog = []; // §26 zera o histórico da temporada anterior
         autoLineupFor(h);
@@ -655,6 +678,7 @@
         cup: { phaseName: cup.phaseName, ties: cup.ties, history: cup.history, championId: cup.championId },
         clubs,
         lastResults: rg.lastResults,
+        rankPrev: rg.rankPrev || {},
         humans: Object.values(rg.humans).map(h => ({ id: h.id, name: h.name, clubId: h.clubId }))
       };
     }

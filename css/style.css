@@ -370,6 +370,8 @@ tr.sug-row td:first-child { box-shadow: inset 3px 0 0 var(--green); }
 .empty-state { text-align: center; padding: 34px 20px; }
 .empty-state .es-icon { font-size: 2.4rem; opacity: .8; }
 .empty-state .es-title { font-weight: 700; margin: 8px 0 2px; }
+.rk-up { color: var(--green); font-weight: 700; font-size: .82rem; }
+.rk-down { color: var(--red); font-weight: 700; font-size: .82rem; }
 .inbox { display: flex; flex-direction: column; gap: 8px; }
 .inbox-item { display: flex; gap: 12px; background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--border); border-radius: 0 10px 10px 0; padding: 10px 14px; }
 .inbox-item.title { border-left-color: var(--gold); }

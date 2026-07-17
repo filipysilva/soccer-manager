@@ -118,5 +118,38 @@
     return season;
   }
 
-  window.TF.competitions = { roundRobin, newTableRow, applyResult, sortTable, drawCup, nextCupPhase, buildSeasonCalendar, CUP_PHASES };
+  /* §4 Prestígio do técnico — CENTRALIZADO (usado por offline e online).
+     Base IGUAL para todos (a escolha/força do clube NÃO dá bônus inicial). Evolui por
+     títulos e pelo desempenho na temporada relativo à EXPECTATIVA: a força do clube só
+     molda o esperado (clube forte é cobrado a pontuar mais), nunca oferece pontos grátis.
+     Assim, no início (0 jogos, 0 títulos) todos empatam na base — sem ranking falso por clube. */
+  const PRESTIGE_BASE = 25;
+  function titleBreakdown(club, ctx) {
+    ctx = ctx || {};
+    let league = 0, cup = 0, other = 0;
+    for (const t of (club.titles || [])) {
+      const name = t.competitionName || t.name;
+      const type = t.competitionType;
+      if (type === "league" || name === ctx.leagueNameA || name === ctx.leagueNameB) league++;
+      else if (type === "cup" || name === ctx.cupName) cup++;
+      else other++;
+    }
+    return { league, cup, other, total: league + cup + other };
+  }
+  function coachPrestige(club, tableRow, ctx) {
+    ctx = ctx || {};
+    let p = PRESTIGE_BASE; // igual para todos os técnicos no início
+    const tb = titleBreakdown(club, ctx);
+    p += tb.league * 20 + tb.cup * 14 + tb.other * 10;
+    if (tableRow && tableRow.j > 0) {
+      const ppg = tableRow.pts / tableRow.j; // pontos por jogo (0..3)
+      const rel = ctx.leagueAvgRating ? (club.rating - ctx.leagueAvgRating) : 0;
+      const expected = Math.max(0.6, Math.min(2.2, 1.35 + rel * 0.03)); // PPG esperado pela força relativa
+      p += (ppg - expected) * 22;   // acima do esperado sobe; abaixo desce
+      p += tableRow.v * 0.6;        // pequeno peso por vitórias
+    }
+    return Math.round(p);
+  }
+
+  window.TF.competitions = { roundRobin, newTableRow, applyResult, sortTable, drawCup, nextCupPhase, buildSeasonCalendar, CUP_PHASES, coachPrestige, titleBreakdown, PRESTIGE_BASE };
 })();

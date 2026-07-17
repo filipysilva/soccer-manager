@@ -890,43 +890,42 @@
     const rng = U.createRng(U.hashString(club.id + "|coachname"));
     return window.TF.names.randomName(club.nation || club.countryId, rng);
   }
+  function rankMoveCell(prevPos, pos) {
+    if (!prevPos) return '<span class="muted">novo</span>';
+    const d = prevPos - pos;
+    if (d > 0) return '<span class="rk-up">▲ ' + d + "</span>";
+    if (d < 0) return '<span class="rk-down">▼ ' + (-d) + "</span>";
+    return '<span class="muted">=</span>';
+  }
   function drawRanking(el) {
+    const C = window.TF.competitions;
     const cid = st.shared.countryId;
     const myId = myClub().id;
-    const leagueNameA = st.shared.leagueNames.A, leagueNameB = st.shared.leagueNames.B, cupName = st.shared.cupName;
+    const ctxBase = { leagueNameA: st.shared.leagueNames.A, leagueNameB: st.shared.leagueNames.B, cupName: st.shared.cupName };
     const ids = Object.keys(st.shared.clubs).filter(id => st.shared.clubs[id].countryId === cid);
     const humansByClub = {}; for (const h of (st.shared.humans || [])) humansByClub[h.clubId] = h.name;
-    const trow = {};
-    for (const div of ["A", "B"]) for (const r of (st.shared.tables[div] || [])) trow[r.clubId] = r;
-    function titleCounts(c) {
-      let league = 0, cup = 0, other = 0;
-      for (const t of (c.titles || [])) {
-        if (t.name === leagueNameA || t.name === leagueNameB) league++;
-        else if (t.name === cupName) cup++;
-        else other++;
-      }
-      return { league, cup, other, total: league + cup + other };
+    const trow = {}, avg = {};
+    for (const div of ["A", "B"]) {
+      for (const r of (st.shared.tables[div] || [])) trow[r.clubId] = r;
+      const dids = ids.filter(id => st.shared.clubs[id].division === (div === "A" ? "A" : "B"));
+      avg[div] = dids.reduce((a, id) => a + st.shared.clubs[id].rating, 0) / (dids.length || 1);
     }
-    function prestige(c) {
-      let p = Math.max(0, c.rating - 50);
-      const tc = titleCounts(c);
-      p += tc.league * 25 + tc.cup * 18 + tc.other * 12;
-      const r = trow[c.id]; if (r) p += r.v * 1.5 + r.e * 0.5;
-      return Math.round(p);
-    }
+    const prev = st.shared.rankPrev || {};
     const rows = ids.map(id => {
       const c = st.shared.clubs[id];
       const human = humansByClub[id];
       const r = trow[id] || { j: 0, v: 0, e: 0, d: 0 };
-      return { c, isMe: id === myId, isHuman: !!human, name: human || aiCoachName(c), t: titleCounts(c), r, points: prestige(c) };
-    }).sort((a, b) => b.t.total - a.t.total || b.points - a.points || b.r.v - a.r.v);
+      const ctx = Object.assign({ leagueAvgRating: avg[c.division] }, ctxBase);
+      return { c, isMe: id === myId, isHuman: !!human, name: human || aiCoachName(c), t: C.titleBreakdown(c, ctxBase), r, points: C.coachPrestige(c, r, ctx) };
+    }).sort((a, b) => b.points - a.points || a.c.name.localeCompare(b.c.name));
+    rows.forEach((r, i) => { r.pos = i + 1; });
     const titleCell = t => t.total
       ? (t.league ? '<span title="Ligas">🏆' + t.league + "</span> " : "") + (t.cup ? '<span title="Copas">🏅' + t.cup + "</span> " : "") + (t.other ? '<span title="Outros">🎖️' + t.other + "</span>" : "")
-      : '<span class="muted">—</span>';
+      : '<span class="muted">Nenhum título</span>';
     el.innerHTML = "<h2>Ranking de técnicos</h2>" +
-      '<p class="muted" style="font-size:.8rem;margin:-6px 0 10px">Vitórias/empates/derrotas da temporada · troféus na carreira</p>' +
-      '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>#</th><th>Técnico</th><th>Clube</th><th class="num">J</th><th class="num">V</th><th class="num">E</th><th class="num">D</th><th>Troféus</th><th class="num">Prestígio</th></tr></thead><tbody>' +
-      rows.map((r, i) => '<tr class="' + (r.isMe ? "me" : "") + '"><td>' + (i + 1) + "º</td><td><b>" + esc(r.name) + "</b>" + (r.isHuman && !r.isMe ? ' <span class="chip" style="padding:1px 6px;font-size:.66rem">humano</span>' : "") + "</td>" +
+      '<p class="muted" style="font-size:.8rem;margin:-6px 0 10px">Base igual para todos · sobe/desce pelo desempenho vs. expectativa · troféus na carreira</p>' +
+      '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>#</th><th>Var.</th><th>Técnico</th><th>Clube</th><th class="num">J</th><th class="num">V</th><th class="num">E</th><th class="num">D</th><th>Troféus</th><th class="num">Prestígio</th></tr></thead><tbody>' +
+      rows.map(r => '<tr class="' + (r.isMe ? "me" : "") + '"><td>' + r.pos + "º</td><td>" + rankMoveCell(prev[r.c.id], r.pos) + "</td><td><b>" + esc(r.name) + "</b>" + (r.isHuman && !r.isMe ? ' <span class="chip" style="padding:1px 6px;font-size:.66rem">humano</span>' : "") + "</td>" +
         '<td><span class="club-cell">' + crest(r.c, 18) + esc(r.c.shortName || r.c.name) + '</span></td><td class="num">' + r.r.j + '</td><td class="num">' + r.r.v + '</td><td class="num">' + r.r.e + '</td><td class="num">' + r.r.d + "</td><td style='white-space:nowrap'>" + titleCell(r.t) + '</td><td class="num"><b>' + r.points + "</b></td></tr>").join("") +
       "</tbody></table></div>";
   }
