@@ -515,33 +515,51 @@
     const cid = S._rankCountry || club.countryId;
     const country = world.countries[cid];
     const ids = (country.clubIdsA || []).concat(country.clubIdsB || []);
-    // prestígio: força do elenco + títulos conquistados (peso por competição)
+    // linhas da tabela (V/E/D da temporada atual) por clube
+    const trow = {};
+    for (const div of ["A", "B"]) for (const r of st.season.leagues[cid][div].table) trow[r.clubId] = r;
+    function titleCounts(c) {
+      let league = 0, cup = 0, other = 0;
+      for (const t of (c.titles || [])) {
+        if (t.name === country.leagueNameA || t.name === country.leagueNameB) league++;
+        else if (t.name === country.cupName) cup++;
+        else other++;
+      }
+      return { league, cup, other, total: league + cup + other };
+    }
     function prestige(c) {
       let p = Math.max(0, c.rating - 50);
-      for (const t of (c.titles || [])) {
-        p += t.name === country.leagueNameA ? 25 : t.name === country.cupName ? 18 : t.name === country.leagueNameB ? 8 : 12;
-      }
+      const tc = titleCounts(c);
+      p += tc.league * 25 + tc.cup * 18 + tc.other * 12;
+      const r = trow[c.id]; if (r) p += r.v * 1.5 + r.e * 0.5; // desempenho na temporada
       return Math.round(p);
     }
     const rows = ids.map(id => {
       const c = world.clubs[id];
       const isUser = id === club.id;
-      return { c, isUser, name: isUser ? st.coach.name : aiCoachName(c), titles: (c.titles || []).length, points: prestige(c) + (isUser ? Math.round((st.coach.points || 0) * 0.1) : 0) };
-    }).sort((a, b) => b.points - a.points || b.titles - a.titles);
+      const r = trow[id] || { j: 0, v: 0, e: 0, d: 0 };
+      return { c, isUser, name: isUser ? st.coach.name : aiCoachName(c), t: titleCounts(c), r, points: prestige(c) };
+    }).sort((a, b) => b.t.total - a.t.total || b.points - a.points || b.r.v - a.r.v);
+
+    const titleCell = t => t.total
+      ? (t.league ? '<span title="Ligas">🏆' + t.league + "</span> " : "") + (t.cup ? '<span title="Copas">🏅' + t.cup + "</span> " : "") + (t.other ? '<span title="Outros">🎖️' + t.other + "</span>" : "")
+      : '<span class="muted">—</span>';
 
     el.innerHTML =
       "<h2>Ranking de técnicos</h2>" +
       '<div class="card"><div class="row"><select id="rk-c">' +
         Object.values(world.countries).map(co => '<option value="' + co.id + '"' + (co.id === cid ? " selected" : "") + ">" + esc(co.name) + "</option>").join("") +
-      "</select></div></div>" +
+      '</select><span class="muted" style="font-size:.8rem">Vitórias/empates/derrotas da temporada · troféus na carreira</span></div></div>' +
       '<div class="card scroll-x mb0"><table class="data"><thead><tr>' +
-        "<th>#</th><th>Técnico</th><th>Clube</th><th class='num'>Títulos</th><th class='num'>Prestígio</th>" +
+        "<th>#</th><th>Técnico</th><th>Clube</th><th class='num'>J</th><th class='num'>V</th><th class='num'>E</th><th class='num'>D</th><th>Troféus</th><th class='num'>Prestígio</th>" +
       "</tr></thead><tbody>" +
       rows.map((r, i) =>
         '<tr class="' + (r.isUser ? "me" : "") + '"><td>' + (i + 1) + "º</td>" +
           "<td><b>" + esc(r.name) + "</b></td>" +
           '<td><span class="club-cell">' + UI().crestImg(r.c, 18) + esc(r.c.shortName || r.c.name) + "</span></td>" +
-          '<td class="num">' + r.titles + '</td><td class="num"><b>' + r.points + "</b></td></tr>").join("") +
+          '<td class="num">' + r.r.j + '</td><td class="num">' + r.r.v + '</td><td class="num">' + r.r.e + '</td><td class="num">' + r.r.d + "</td>" +
+          "<td style='white-space:nowrap'>" + titleCell(r.t) + "</td>" +
+          '<td class="num"><b>' + r.points + "</b></td></tr>").join("") +
       "</tbody></table></div>";
     el.querySelector("#rk-c").addEventListener("change", e => { S._rankCountry = e.target.value; S.ranking(el); });
   };
@@ -730,7 +748,7 @@
         "<td>" + p.traits.map(t => '<span class="trait">' + esc(t) + "</span>").join("") + "</td>" +
         '<td class="num">' + (p.contractYears > 0 ? p.contractYears + " ano(s)" : "<span class='money-neg'>livre</span>") + "</td>" +
         '<td class="num">' + (p.contractYears > 0 ? money(T().askingPrice(p, club)) : "—") + "</td>" +
-        (!isMine ? '<td><button class="btn small" data-offer="' + p.id + '">Proposta</button></td>' : "") +
+        (!isMine ? (T().isSellable(p, club, G().state.season.year) ? '<td><button class="btn small" data-offer="' + p.id + '">Proposta</button></td>' : '<td class="muted" style="font-size:.76rem">Não à venda</td>') : "") +
         "</tr>").join("") +
       "</tbody></table></div>";
     el.querySelector("#cv-back").addEventListener("click", () => UI().goto("clubs"));
@@ -803,12 +821,14 @@
           '<button class="btn small" id="f-go">Filtrar</button>' +
         "</div></div>" +
         '<div class="card scroll-x mb0"><table class="data"><thead><tr><th>Pos</th><th>Nome</th><th class="num">Idade</th><th class="num">Força</th><th>Características</th><th>Clube</th><th class="num">Valor</th><th></th></tr></thead><tbody>' +
-        list.map(({ p, c }) =>
-          "<tr><td>" + UI().posBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b>" + star(p) + "</td><td class='num'>" + p.age + "</td><td class='num'>" + UI().ratingBadge(p.rating) + "</td>" +
-          "<td>" + p.traits.map(t => '<span class="trait">' + esc(t) + "</span>").join("") + "</td>" +
-          '<td><span class="club-cell">' + UI().crestImg(c, 18) + esc(c.shortName) + "</span></td>" +
-          "<td class='num'>" + money(T().askingPrice(p, c)) + "</td>" +
-          '<td><button class="btn small" data-offer="' + p.id + '">Proposta</button></td></tr>').join("") +
+        list.map(({ p, c }) => {
+          const avail = T().isSellable(p, c, st.season.year);
+          return "<tr><td>" + UI().posBadge(p.pos) + "</td><td><b>" + esc(p.name) + "</b>" + star(p) + "</td><td class='num'>" + p.age + "</td><td class='num'>" + UI().ratingBadge(p.rating) + "</td>" +
+            "<td>" + p.traits.map(t => '<span class="trait">' + esc(t) + "</span>").join("") + "</td>" +
+            '<td><span class="club-cell">' + UI().crestImg(c, 18) + esc(c.shortName) + "</span></td>" +
+            "<td class='num'>" + (avail ? money(T().askingPrice(p, c)) : "—") + "</td>" +
+            (avail ? '<td><button class="btn small" data-offer="' + p.id + '">Proposta</button></td>' : '<td class="muted" style="font-size:.76rem;white-space:nowrap">Não à venda</td>') + "</tr>";
+        }).join("") +
         "</tbody></table></div>";
     } else if (tab === "recebidas") {
       const bids = st.pendingBids || [];
@@ -888,6 +908,7 @@
     const p = world.players[pid];
     if (!p) return;
     const owner = world.clubs[p.clubId];
+    if (!T().isSellable(p, owner, G().state.season.year)) { UI().toast("O " + (owner ? owner.name : "clube") + " não pretende vender " + p.name + "."); return; }
     // jogadores com contrato só podem ser negociados com a janela aberta; livres, sempre
     if (p.contractYears > 0) {
       const win = G().transferWindowInfo();

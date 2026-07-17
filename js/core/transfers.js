@@ -25,6 +25,18 @@
     return v;
   }
 
+  /* O clube pretende vender este jogador? Não faz sentido todos os craques
+     estarem à venda: craques de clubes fortes são retidos; só uma minoria
+     entra na lista de transferências a cada temporada (determinístico). */
+  function isSellable(player, ownerClub, seasonYear) {
+    if (!ownerClub || player.contractYears <= 0) return true; // livre
+    if (player.forSale) return true;                          // anunciado pelo dono
+    if (!player.star) return true;                            // não-craques: negociáveis
+    if (ownerClub.rating < 74) return true;                   // craque em clube fraco pode sair
+    const h = window.TF.util.hashString(player.id + "|sell" + (seasonYear || 0));
+    return (h % 100) < 8;                                     // ~8% dos craques de clubes fortes disponíveis/temporada
+  }
+
   /* Salário que o jogador exige para assinar. */
   function wageDemand(player, buyingClub) {
     let w = player.wage * 1.15;
@@ -142,5 +154,5 @@
     return { ok: true };
   }
 
-  window.TF.transfers = { askingPrice, fairValue, wageDemand, evaluateOffer, makeOffer, transferPlayer, renewContract, aiOffersForUser, acceptAiOffer };
+  window.TF.transfers = { askingPrice, isSellable, fairValue, wageDemand, evaluateOffer, makeOffer, transferPlayer, renewContract, aiOffersForUser, acceptAiOffer };
 })();
